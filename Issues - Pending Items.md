@@ -1,5 +1,118 @@
 # TailsUp — Issues & Pending Items
 
+---
+
+# PHASE 2 — Trainer View (code review)
+
+Code review of the Phase 2 implementation (commits `2be5fb7` Unit A shared DTOs,
+`1d30170` Units B/C api + mobile), 2026-06-20, Node v20.20.2. Reviewed against
+`refined-request-phase2.md` (AC-1..AC-13), the `project-design.md` Phase 2
+section, `plan-002-...md` (gates G-1..G-8, incl. the **G-7 USER OVERRIDE =
+playback via presigned-GET**), and `investigation-phase2.md` (pitfalls R-1..R-7).
+
+**Verdict: PASS — no code changes required.** All three workspaces typecheck
+clean (strict, 0 errors), all 31 Phase 1 API tests still pass, no DB migration
+introduced, `schema.ts` unchanged. The most-likely-defect (`blobUrl` round-trip
+between `POST /events/:id/media` write and `GET /media/:id/url` read) is
+**consistent** — see below.
+
+## PHASE 2 — UNRESOLVED ISSUES
+
+### Critical
+_None._
+
+### Important
+1. **Live-R2 + live-DB smoke test pending (AC-3, AC-5..AC-10).** The R2 presign
+   PUT, the direct device→R2 upload, the presigned-GET playback, and all read
+   endpoints were verified by **static review only** — no real R2 credentials and
+   no live PostgreSQL were available in this environment (lazy R2 config is exactly
+   what lets the suite run credential-free, by design — R-4). Before demo/deploy:
+   set the four `R2_*` vars + `DATABASE_URL`, seed the trainer→client→dog→protocol
+   →session graph, then exercise presign→PUT→`POST /events/:id/media`→`GET
+   /events/:id`→`GET /media/:id/url`. Confidence is high (logic is well-formed and
+   the round-trip parse is sound), but the SDK-against-real-R2 path is unexercised.
+2. **R2 bucket CORS is a hard prerequisite for web upload (G-8 / OQ-10).** The
+   browser PUT to R2 on Expo **web** requires an R2 bucket CORS rule allowing `PUT`
+   + `Content-Type` from the web origin (`http://localhost:8081` in dev). This is a
+   Cloudflare bucket setting, NOT API code; `lib/upload.ts` already surfaces a clear
+   CORS error message. Native uploads are unaffected. Must be configured (and
+   documented in the README per AC-13) before AC-9 can pass on web.
+
+### Minor / follow-ups (non-blocking)
+1. **`POST /events/:id/media` hard-codes `type: 'video'`** (events.ts:159) and does
+   not branch on `contentType`. Correct for Phase 2 (video-only allow-set:
+   `video/mp4`, `video/quicktime`), and `contentType` is still Zod-validated
+   (bad type → 400) and used for the extension on the presign side. If image upload
+   is added later, derive `type` from `contentType` then. No action now.
+2. **`blobUrl` embeds the bucket name at write time** (`blobUrlForKey`), and
+   `keyFromBlobUrl` strips exactly one leading path segment to recover the key. If
+   `R2_BUCKET` were ever renamed between an upload and a later playback, the stored
+   URL still carries the old bucket; the key is still recovered correctly, but
+   `presignGetUrl` signs against the *current* bucket. Acceptable Phase 2 assumption
+   (bucket is fixed); noted only for completeness.
+3. **AWS SDK declared `^3.937.0`, resolved `3.1073.0`** for BOTH `@aws-sdk/client-s3`
+   and `@aws-sdk/s3-request-presigner` (verified identical — the `getSignedUrl`
+   version-mismatch footgun R-5 is NOT present). The mandatory R2 checksum flags
+   (`requestChecksumCalculation`/`responseChecksumValidation: 'WHEN_REQUIRED'`,
+   R-1) ARE set. No action.
+
+## PHASE 2 — RESOLVED ITEMS
+_None — the implementation was correct as committed; the review applied no
+working-tree changes._
+
+## PHASE 2 — REVIEW VERIFICATIONS (all passed)
+
+- **AC-1 typecheck (strict, 0 errors):** `packages/shared` ✅ · `@tailsup/api` ✅ ·
+  `@tailsup/mobile` ✅ (before == after; no fixes needed).
+- **Phase 1 regression:** `npm run -s test -w @tailsup/api` → **31/31 pass**
+  (config 6, health 3, events 22) — Phase 1 endpoints unchanged (AC-12).
+- **AC-12 no migration / phase boundary:** `git status --porcelain apps/api/drizzle`
+  empty; `git show --stat 1d30170 -- apps/api/drizzle` empty; `schema.ts` untouched
+  in both commits and clean in the working tree. `media` / `behavior_event.note` /
+  `behavior_event.tags` columns reused as-is. No auth/public-site/client/leads/AI
+  code added.
+- **AC-2 shared DTOs present + pure:** all 11 required DTOs exported via the barrel
+  (`MediaDTO`, `BehaviorEventWithMediaDTO`, `DogSummaryDTO`, `DogDetailDTO`,
+  `SessionSummaryDTO`, `DogTimelineDTO`, `TimelineSessionDTO`, `PresignRequest`,
+  `PresignResponse`, `CreateMediaInput`, `UpdateBehaviorEventInput`; plus
+  `BehaviorEventListItemDTO` + `MediaPlaybackUrlDTO` for G-7). Grep for
+  `drizzle|pg|aws|node:|hono` in `packages/shared/src` → **no matches** (Metro-safe).
+- **R2 module (`src/lib/r2.ts`):** checksum flags set (R-1); lazy `getR2Config()`
+  reads R2 vars only at call time, NOT in `config.ts` (R-4); key scheme
+  `events/<eventId>/<uuid>.<ext>`; PUT presign signs `ContentType` and echoes it in
+  `headers` (R-6); `presignGetUrl` issues the playback GET (G-7); AWS SDK isolated
+  to `apps/api` (NFR-5).
+- **blobUrl round-trip (the flagged likely-defect) — CONSISTENT:** write
+  `blobUrlForKey` →
+  `https://<acct>.r2.cloudflarestorage.com/<bucket>/events/<eventId>/<uuid>.<ext>`;
+  read `keyFromBlobUrl` parses the URL pathname, strips the leading slash + the
+  one bucket segment → `events/<eventId>/<uuid>.<ext>`, which exactly equals the
+  original `buildKey` output (no leading slash). Has a defensive non-URL fallback.
+  Round-trips correctly.
+- **Endpoints:** presign → 400 (Zod enum on disallowed contentType) / 404 (missing
+  event) / 503 (R2 unconfigured, lazy) / 200 `PresignResponse`. `POST
+  /events/:id/media` → 404 / 503 / 201 `MediaDTO`. `GET /media/:id/url` → 404 / 503
+  / 200 `MediaPlaybackUrlDTO`. Reads use plain `select()` + joins + `inArray`
+  batching (no `relations()`, no N+1 — timeline is 2 queries; `GET /sessions/:id/
+  events` batches media counts). `PATCH /events/:id` Zod body is `{ note?, tags? }`
+  ONLY — tap fields + `intervention` are structurally un-settable (AC-4 moat).
+  `POST /dogs/:id/sessions` → 404 dog / 201 `SessionSummaryDTO`. Validation via
+  `@hono/zod-validator` over shared enums throughout.
+- **Mobile:** `lib/api.ts` reads `EXPO_PUBLIC_*` via static dot-access (AC-11),
+  responses typed with shared DTOs (no `any`). 4-tap screen pre-defaults all four
+  fields + omits `intervention` (server defaults it) + optimistic reset + retry-
+  without-retap + OQ-8 no-default escape hatch. `lib/upload.ts` branches on
+  `Platform.OS`: native uses `expo-file-system/legacy` `createUploadTask` +
+  `FileSystemUploadType.BINARY_CONTENT` + `httpMethod:'PUT'` (NOT the deprecated
+  main-import path — R-2; the legacy entry avoids the SDK-54 runtime deprecation
+  throw), web uses `fetch` PUT; Content-Type threaded presign→PUT identically
+  (R-6). G-7 playback: `GET /media/:id/url` → `expo-video` `<VideoView>`.
+- **Security:** no committed secrets (`.env.example` only, placeholder trainer id);
+  presign validates content type + event existence before signing; `cors()` already
+  enabled in `app.ts`.
+
+---
+
 Phase 1 (Foundations). Code review of Units B/C/D on top of Unit A, then a
 whole-monorepo **integration verification** (2026-06-20, Node v20.20.2 /
 npm 10.8.2). Integration verification confirmed: API build exit 0; all 3

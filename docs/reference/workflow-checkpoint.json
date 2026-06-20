@@ -3,8 +3,8 @@
   "timestamp": "2026-06-20T20:45:00Z",
   "request_summary": "TailsUp Phase 2 - Trainer view: 4-tap quick-logging screen (writes BehaviorEvents), post-session detail screen (note, tags, video upload via R2 presign), dog timeline. Requires POST /media/presign + read endpoints. Auth still deferred to Phase 3.",
   "product_phase": 2,
-  "last_completed_phase": 0,
-  "last_completed_phase_name": "Phase 2 workflow started",
+  "last_completed_phase": 7,
+  "last_completed_phase_name": "Phase 2 Coders (Units A/B/C committed: 2be5fb7, 1d30170). Typechecks clean, 31 P1 tests still pass. G-7=presigned-GET playback; R2=no-creds (build+mock).",
   "environment_notes": "Node 20.20.2 active via nvm. Phase 1 complete + demoed (commits through 687a7fe). For Phase 2 DB demos: docker run postgres:16 (container tailsup-pg), .env has DATABASE_URL.",
   "artifacts": {
     "REFINED_REQUEST_FILE": null,
