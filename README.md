@@ -4,10 +4,15 @@ TailsUp is a data-driven dog-training platform. A trainer records structured
 behavior data during sessions (a fast 4-tap log), clients track their dog's
 progress and homework, a public website captures leads and bookings, and cheap
 AI summaries report on progress — with the structured behavior data as the
-long-term proprietary dataset moat. **This repository is Phase 1 (Foundations):**
-an npm-workspaces monorepo with the full database schema, two API endpoints, a
-mobile connectivity screen, environment scaffolding, and an automated daily
-database backup. Later phases are not built yet (see [Phase boundary](#phase-boundary)).
+long-term proprietary dataset moat. **This repository has shipped Phase 1
+(Foundations) and Phase 2 (Trainer view):** an npm-workspaces monorepo with the
+full database schema, the Phase 1 endpoints (`GET /health`,
+`POST /sessions/:id/events`), the Phase 2 trainer-view read/media API, three
+trainer-facing Expo Router screens (4-tap quick-log, post-session detail with
+direct-to-R2 video upload, dog timeline), environment scaffolding, and an
+automated daily database backup. Phases 3–4 are not built yet (see
+[Phase boundary](#phase-boundary)). Phase 2 run/test instructions are in the
+[Phase 2 — Trainer view](#phase-2--trainer-view) section.
 
 ## Monorepo layout
 
@@ -195,15 +200,180 @@ psql "$DATABASE_URL" -c "SELECT version();"
 To run the backup manually once secrets are set: open the **Actions** tab →
 **db-backup** → **Run workflow**.
 
+## Phase 2 — Trainer view
+
+Phase 2 adds the trainer-facing experience **on top of** Phase 1 (nothing in
+Phase 1 changed). It is **three Expo Router screens** plus the **read/media API**
+they depend on. **No schema migration** — the `media` table and the
+`behavior_event.note` / `behavior_event.tags` columns already existed (AC-12).
+
+### What Phase 2 adds
+
+**API endpoints** (all unauthenticated — auth is Phase 3):
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /trainers/:trainerId/dogs` | List a trainer's dogs (`DogSummaryDTO[]`; unknown trainer → `200 []`). |
+| `GET /dogs/:id` | A dog + its sessions with `eventCount` (`DogDetailDTO`; `404` if unknown). |
+| `GET /dogs/:id/timeline` | The dog's sessions+events, reverse-chronological, grouped (`DogTimelineDTO`; `404`). |
+| `GET /sessions/:id/events` | A session's events, chronological, with `mediaCount` (`BehaviorEventListItemDTO[]`; `404`). |
+| `GET /events/:id` | A single event + its `media[]` (`BehaviorEventWithMediaDTO`; `404`). |
+| `PATCH /events/:id` | Update **only** `note` / `tags` — tap fields & `intervention` are immutable (`404`). |
+| `POST /events/:id/media` | Record a `media` row after a confirmed upload (`201 MediaDTO`; `404`; `503` if R2 unset). |
+| `POST /media/presign` | Issue a presigned R2 **PUT** URL (`200 PresignResponse`; `400` bad type; `404`; `503`). |
+| `GET /media/:id/url` | Issue a short-lived presigned R2 **GET** URL for playback (`200 MediaPlaybackUrlDTO`; `404`; `503`). |
+| `POST /dogs/:id/sessions` | Start a session so the 4-tap screen has a container (`201 SessionSummaryDTO`; `404`). |
+
+**Mobile screens** (Expo Router, work on **web**): `app/dogs/index.tsx` (dog
+list), `app/dogs/[id]/timeline.tsx` (timeline), `app/sessions/[id]/log.tsx`
+(4-tap quick-log), `app/events/[id].tsx` (detail + video upload). The typed API
+client is `apps/mobile/lib/api.ts`; the direct-to-R2 upload flow is
+`apps/mobile/lib/upload.ts`.
+
+### Seed the org graph (required before the screens have data)
+
+Phase 2 reads/logs against a **seeded** trainer → client → dog → protocol →
+session graph — there is no UI to create the org graph (out of scope). With
+`DATABASE_URL` set and migrations applied (see [Database](#database-migrations)),
+run these manual inserts (psql), capturing the trainer and session ids:
+
+```bash
+psql "$DATABASE_URL" <<'SQL'
+-- a trainer
+INSERT INTO trainer (id, name, email)
+VALUES ('11111111-1111-1111-1111-111111111111', 'Demo Trainer', 'trainer@example.com');
+
+-- a protocol with a default intervention (so the 4-tap screen can omit it)
+INSERT INTO protocol (id, name, default_intervention)
+VALUES ('22222222-2222-2222-2222-222222222222', 'Reactivity v1', 'u-turn');
+
+-- a client owned by the trainer
+INSERT INTO client (id, trainer_id, name, email)
+VALUES ('33333333-3333-3333-3333-333333333333',
+        '11111111-1111-1111-1111-111111111111', 'Demo Client', 'client@example.com');
+
+-- a dog owned by the client, on the protocol
+INSERT INTO dog (id, client_id, protocol_id, name, breed, age_months)
+VALUES ('44444444-4444-4444-4444-444444444444',
+        '33333333-3333-3333-3333-333333333333',
+        '22222222-2222-2222-2222-222222222222', 'Rex', 'GSD', 30);
+
+-- a session to log into
+INSERT INTO session (id, dog_id, started_at, location)
+VALUES ('55555555-5555-5555-5555-555555555555',
+        '44444444-4444-4444-4444-444444444444', now(), 'park');
+SQL
+```
+
+> Column names are **snake_case** (the schema's `casing: 'snake_case'`). Adjust
+> the column list to match `apps/api/src/db/schema.ts` if you change the schema.
+> The exact non-null columns per table are defined there; the inserts above cover
+> the columns the Phase 2 screens read. You can also start a session via the API
+> instead of seeding one: `POST /dogs/:id/sessions` (see below).
+
+### Run the API + mobile app (Phase 2)
+
+```bash
+# 1. API (same as Phase 1)
+npm run dev -w apps/api
+
+# 2. Mobile — set the trainer context, then start web
+#    apps/mobile/.env:
+#      EXPO_PUBLIC_API_URL=http://localhost:3000
+#      EXPO_PUBLIC_TRAINER_ID=11111111-1111-1111-1111-111111111111
+npm run web -w apps/mobile
+```
+
+`EXPO_PUBLIC_TRAINER_ID` is the seeded trainer id the dog-list screen scopes to
+(pre-auth trainer context; replaced by the authenticated trainer id in Phase 3).
+It is read via **static dot-access** so Metro inlines it — see
+`apps/mobile/.env.example`.
+
+### R2 environment (for presign / upload / playback)
+
+`POST /media/presign`, `POST /events/:id/media`, and `GET /media/:id/url` read
+the R2 credentials via a **lazy, throw-on-missing** accessor
+(`apps/api/src/lib/r2.ts`). If any var is unset these endpoints return
+**`503 { "error": "media storage not configured" }`** — never a fabricated URL.
+The read endpoints and the 4-tap log need **no** R2 config. Set in `.env`:
+
+```bash
+R2_ACCOUNT_ID=...            # forms https://<id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=...         # R2 API token, scoped Object Read & Write
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=tailsup-media      # the media bucket (≠ the backups bucket)
+```
+
+> **R2 bucket CORS is a hard prerequisite for web upload (AC-9 on web).** The
+> browser `PUT` to R2 from Expo **web** is cross-origin and is blocked unless the
+> **R2 bucket's CORS policy** allows `PUT` (and the `Content-Type` header) from
+> the Expo web origin (`http://localhost:8081` in dev). This is a **Cloudflare
+> bucket setting, not API code.** Configure it in the Cloudflare dashboard
+> (R2 → your media bucket → Settings → CORS Policy), for example:
+>
+> ```json
+> [
+>   {
+>     "AllowedOrigins": ["http://localhost:8081"],
+>     "AllowedMethods": ["PUT", "GET"],
+>     "AllowedHeaders": ["content-type"],
+>     "MaxAgeSeconds": 3600
+>   }
+> ]
+> ```
+>
+> Native (iOS/Android) uploads do **not** enforce CORS; if you cannot set CORS,
+> verify the upload on a native simulator instead.
+
+### Exercise the video flow (presign → direct PUT → persist → playback)
+
+Replace `<EVENT_ID>` with a real `behavior_event` id (log one via the 4-tap
+screen or `POST /sessions/:id/events`):
+
+```bash
+# 1. Presign — get a PUT URL + object key (no media row is created here)
+curl -s -X POST http://localhost:3000/media/presign \
+  -H 'Content-Type: application/json' \
+  -d '{ "eventId": "<EVENT_ID>", "contentType": "video/mp4" }'
+# -> { "uploadUrl": "...", "method": "PUT", "headers": { "Content-Type": "video/mp4" },
+#      "key": "events/<EVENT_ID>/<uuid>.mp4", "expiresInSeconds": 600 }
+
+# 2. Upload the bytes DIRECTLY to R2 (never through the API). Echo the SAME
+#    Content-Type the presign signed, or R2 returns 403 SignatureDoesNotMatch.
+curl -s -X PUT "<uploadUrl>" \
+  -H 'Content-Type: video/mp4' \
+  --data-binary @./clip.mp4
+
+# 3. Record the media row (after the upload confirms)
+curl -s -X POST http://localhost:3000/events/<EVENT_ID>/media \
+  -H 'Content-Type: application/json' \
+  -d '{ "key": "events/<EVENT_ID>/<uuid>.mp4", "contentType": "video/mp4" }'
+# -> 201 MediaDTO
+
+# 4. The new media now appears here, and you can fetch a playback URL
+curl -s http://localhost:3000/events/<EVENT_ID>          # media[] now includes it
+curl -s http://localhost:3000/media/<MEDIA_ID>/url       # -> { "url": "...", "expiresInSeconds": 600 }
+```
+
+### Verifying AC-3..AC-10
+
+| AC | How to verify |
+| --- | --- |
+| **AC-3** reads | `curl` the five read endpoints above against the seeded ids; unknown ids → `404` (trainers list → `200 []`). |
+| **AC-4** patch note/tags only | `curl -X PATCH /events/<id> -d '{"note":"x","tags":["a"]}'` → `200`; sending tap fields/`intervention` has no effect on those columns. |
+| **AC-5** presign | step 1 above → `200 PresignResponse`; disallowed `contentType` → `400`; unknown event → `404`; R2 unset → `503`. |
+| **AC-6/7** upload + persist | steps 2–3 above; bytes go to the R2 host (the API has no file-receiving route); media then shows in `GET /events/:id`. |
+| **AC-8** 4-tap log | On Expo web, open `/sessions/<id>/log`, tap the four fields, submit → `201` (intervention omitted, server-defaulted), screen resets. |
+| **AC-9** detail + upload | On Expo web, open `/events/<id>`, edit note/tags (persists via PATCH), pick a video, watch progress → media appears (requires R2 + bucket CORS). |
+| **AC-10** timeline | On Expo web, open `/dogs/<id>/timeline` → sessions newest-first, events newest-first, tap a row → detail screen. |
+
 ## Phase boundary
 
-This is **Phase 1 — Foundations**. The schema covers all 11 entities, but only
-two endpoints are implemented: **`GET /health`** and
-**`POST /sessions/:id/events`** (AC-12). The following are intentionally **NOT**
-built yet:
+Phases **1 — Foundations** and **2 — Trainer view** are built. The schema covers
+all 11 entities; the implemented endpoints are `GET /health`,
+`POST /sessions/:id/events` (Phase 1) plus the Phase 2 trainer-view endpoints
+listed above (AC-12). The following are intentionally **NOT** built yet:
 
-- **Phase 2 — Trainer view:** 4-tap quick-logging UI, post-session detail
-  (note/tags/video upload via R2 presign), dog timeline, `POST /media/presign`.
 - **Phase 3 — Public site + Client view:** website pages (Home, About,
   Services, Results, Contact + lead form, Booking), BetterAuth with
   `trainer`/`client` roles, client dashboard, and the lead/booking endpoints

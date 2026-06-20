@@ -2,6 +2,86 @@
 
 ---
 
+# PHASE 2 — Trainer View (integration verification)
+
+Whole-monorepo **integration verification** (2026-06-20, Node v20.20.2 / npm
+10.8.2, Windows 11). Verified against `refined-request-phase2.md` (AC-1..AC-13)
+and the Phase 2 section of `project-design.md`. **No live PostgreSQL / no R2
+credentials** (user chose "no R2 yet") — DB-runtime + R2 ACs verified via the
+mocked unit tests + static review; live smoke tests documented as manual steps.
+Full report: `docs/reference/integration-verification-phase2.md`.
+
+**Verdict: READY** (for the user's Phase 2 review). Gates: shared/api/mobile
+typecheck exit 0 (strict, 0 errors); API build (`tsc --noEmit`) exit 0; **133/133
+tests pass** (31 Phase 1 + 102 Phase 2, credential-free); `git status --porcelain
+apps/api/drizzle` empty + `schema.ts` unchanged since Phase 1 commit `0ed0e8f`
+(AC-12, no migration); Expo **web export** exit 0 (7 routes incl. all four Phase 2
+screens — Metro resolves the new routes + `lib/api.ts` + `lib/upload.ts` +
+`@tailsup/shared` DTOs + `expo-image-picker`/`expo-video`/`expo-file-system`); no
+linter configured (expected). AC-1..AC-13 all **met**. One gap (AC-13 README) was
+**fixed** in this pass — see Resolved. The only working-tree change is `README.md`
+(not committed).
+
+## PHASE 2 (integration) — UNRESOLVED ISSUES
+
+### Critical
+_None._
+
+### Important
+1. **Live DB + R2 smoke test pending (AC-3, AC-5..AC-10).** The read endpoints,
+   presign PUT, direct device→R2 upload, `POST /events/:id/media` persist, and the
+   `GET /media/:id/url` playback were verified by mocked tests + static review only
+   (lazy `getR2Config()` is exactly what lets the suite run credential-free — R-4).
+   Before demo/deploy run the manual steps in
+   `docs/reference/integration-verification-phase2.md` §7:
+   set `DATABASE_URL` → `npm run db:migrate -w apps/api` (already applied in Phase 1;
+   **idempotent**, no Phase 2 migration) → seed trainer→client→dog→protocol→session
+   → start the API → curl the read/start-session endpoints; then set the four `R2_*`
+   vars → presign → direct PUT → `POST /events/:id/media` → `GET /events/:id` →
+   `GET /media/:id/url`. Confidence high (logic well-formed, round-trip parse sound);
+   the SDK-against-real-R2 path is the one unexercised edge.
+2. **R2 bucket CORS is a HARD prerequisite for web upload (G-8 / OQ-10 / AC-9 on web).**
+   The browser PUT to R2 on Expo **web** is blocked unless the **R2 bucket's CORS
+   policy** allows `PUT` (+ the `content-type` header) from the Expo web origin
+   (`http://localhost:8081` in dev). It is a **Cloudflare bucket setting, NOT API
+   code** — `lib/upload.ts` already surfaces a clear CORS error. Native uploads are
+   unaffected. Now documented in the README Phase 2 section (with an example CORS
+   JSON) per AC-13. Must be configured in Cloudflare before AC-9 passes on web.
+
+### Minor / follow-ups (non-blocking)
+1. **No seed script — manual inserts documented instead.** There is no
+   `apps/api` seed script; the spec's "[Seed data exists]" assumption permits "a
+   seed script **or** documented manual inserts." The README Phase 2 section now
+   provides the manual `psql` inserts (trainer→client→dog→protocol→session). A
+   reusable `db:seed` script is an optional future convenience, not an AC gap.
+2. **Deferred dependency advisories (carried from Phase 1, unchanged).** No new
+   advisories from the Phase 2 deps. The two AWS SDK packages are matched-version
+   (R-5 footgun absent) with the mandatory R2 checksum flags set; the Expo native
+   modules (`expo-image-picker`, `expo-video`, `expo-file-system`) were installed
+   via the SDK-54-compatible pins. The pre-existing 23 moderate npm-audit
+   advisories (MR-1 Expo SDK 54 transitive; MR-2 `drizzle-kit`→`esbuild@0.18`)
+   remain deferred — all transitive dev/build tooling, none in the production API
+   or shipped mobile bundle. Resolve MR-1/MR-2 before public launch.
+
+## PHASE 2 (integration) — RESOLVED THIS PASS
+
+### AC-13 — README had no Phase 2 run/test docs — FIXED
+- **Symptom:** `README.md` still described the repo as "Phase 1 — Foundations"
+  with only two endpoints and **listed Phase 2 as NOT built**. It contained none
+  of the Phase 2 run/seed/flow/CORS documentation AC-13 requires. (Per the design's
+  unit ownership, the README Phase 2 section was Unit B's deliverable and had not
+  landed.)
+- **Fix (working tree only — not committed):** updated the intro + Phase boundary
+  to reflect Phase 1+2 shipped, and added a **"Phase 2 — Trainer view"** section:
+  the endpoint table, manual seed inserts, run commands, `EXPO_PUBLIC_TRAINER_ID`,
+  the R2 env block, the **R2 bucket CORS prerequisite** (with example JSON), the
+  presign→PUT→persist→playback curl flow, and an AC-3..AC-10 verification table.
+- **Verified:** mobile typecheck still exits 0 after the edit (README is not
+  compiled); the documented commands match `apps/api/package.json` scripts,
+  `apps/mobile/.env.example`, and the design §P2.
+
+---
+
 # PHASE 2 — Trainer View (code review)
 
 Code review of the Phase 2 implementation (commits `2be5fb7` Unit A shared DTOs,
