@@ -1,8 +1,15 @@
 # TailsUp — Issues & Pending Items
 
-Phase 1 (Foundations) code review. Reviewed commits `0ed0e8f` (Units B/C/D) on top
-of `6ce5f11` (Unit A). Node 20.20.2 active. All fixes applied to the working tree
-(not committed — the orchestrator commits).
+Phase 1 (Foundations). Code review of Units B/C/D on top of Unit A, then a
+whole-monorepo **integration verification** (2026-06-20, Node v20.20.2 /
+npm 10.8.2). Integration verification confirmed: API build exit 0; all 3
+workspaces typecheck clean (strict); Expo web export exit 0 (Metro resolves
+`@tailsup/shared`, no metro.config.js — Risk R1 cleared); 31/31 API tests pass;
+no linter configured (expected); all AC-1..AC-12 met (DB-runtime ones via mocked
+tests + static schema/migration review). Full report:
+`docs/reference/integration-verification-phase1.md`. The only working-tree change
+from this pass was a two-word README count fix. All changes are in the working
+tree (not committed — the orchestrator commits).
 
 ---
 
@@ -11,26 +18,47 @@ of `6ce5f11` (Unit A). Node 20.20.2 active. All fixes applied to the working tre
 ### Critical
 _None._ All three workspace typechecks pass with zero errors under `strict: true`,
 the schema/migration are complete and correct, both endpoints are wired and
-correct, and no secrets are committed.
+correct, no secrets are committed, the API builds, all 31 API tests pass, and the
+Expo web bundle exports successfully (proving the `@tailsup/shared` monorepo
+wiring through Metro with no metro.config.js — Risk R1 cleared).
 
 ### Important
-_None blocking Phase 1 acceptance._
+1. **Live-DB smoke test pending (AC-3 / AC-6 / AC-7).** These DB-runtime criteria
+   were verified via the mocked-DB unit tests (31 passing) plus static review of
+   `apps/api/drizzle/0000_amused_brood.sql` and `src/db/schema.ts`. They have NOT
+   been exercised against a real PostgreSQL (none available — no Docker daemon, no
+   `DATABASE_URL`). Before deploy, run the documented manual steps M-1..M-4 in
+   `docs/reference/integration-verification-phase1.md` §7:
+   set `DATABASE_URL`, `npm run db:migrate -w apps/api`, start the API, `curl
+   /health`, POST the events examples, and confirm the Expo web round-trip. The
+   migration SQL and route logic are well-formed, so confidence is high.
+2. **23 moderate npm audit advisories — deferred (from
+   `docs/reference/dependency-validation-tailsup.md`).** All are transitive
+   dev/build-tooling vulnerabilities, none in the production API or shipped mobile
+   bundle:
+   - **MR-1 (20 advisories)** — under the Expo SDK 54 pin (`postcss` XSS, `uuid`
+     bounds in `xcode`, `js-yaml` DoS in test tooling). Fix = coordinated Expo SDK
+     56 upgrade (`npx expo install expo@^56 --fix`); guarded by the SDK 54 pin.
+   - **MR-2 (3 advisories)** — `drizzle-kit` → abandoned `@esbuild-kit` →
+     `esbuild@~0.18.20` (GHSA-67mh-4wv8-2f99, dev-server CORS). npm's suggested
+     downgrade to `drizzle-kit@0.18.1` is a breaking regression — do NOT apply.
+     Fix = upstream drizzle-kit release (monitor changelog for `@esbuild-kit`
+     removal). Resolve both before public launch.
 
 ### Minor / follow-ups (non-blocking, deferred to later phases or environment)
-1. **Runtime DB verification not performed in this review.** AC-3 (migration applies
-   to an empty Postgres) and AC-6/AC-7 (live endpoint behavior) were verified by
-   static inspection only — no `DATABASE_URL` / live Postgres was available in the
-   review environment. The migration SQL is well-formed (11 `CREATE TABLE`, 6
-   `CREATE TYPE`, FKs as post-create `ALTER TABLE`, GIN on `tags`) and the route
-   logic matches the design, so confidence is high, but a one-time `db:migrate` +
-   `curl` smoke test against a real DB is recommended before deploy.
-2. **`apps/api` has no emitting `build`.** Intentional (no-build shared package +
-   `tsx` runtime; design §8). The `build` script is now `tsc --noEmit` (a typecheck
+1. **`apps/api` has no emitting `build`.** Intentional (no-build shared package +
+   `tsx` runtime; design §8). The `build` script is `tsc --noEmit` (a typecheck
    gate). If a bundled production artifact is ever wanted (e.g. esbuild), that is a
    later-phase decision; `tsx src/index.ts` is the documented Railway start path.
-3. **Doc miscount (cosmetic).** The spec/plan/design and (originally) the README said
-   "12 entities". The true count is **11**. README corrected to 11 in this review;
-   the docs under `docs/` still say 12 in places — harmless, optional to correct.
+2. **Spec/design "12 entities" vs implemented 11 (documentation inconsistency).**
+   FR-2 / AC-3 / AC-4 and the design prose say "12 entities/tables", but the spec's
+   own enumerated data-model table (refined-request lines 67–77) lists exactly
+   **11** distinct entities (Trainer, Client, Protocol, Dog, Session, BehaviorEvent,
+   Media, Exercise, Homework, Lead, Booking). The implementation defines **all 11**
+   (11 `pgTable`, 11 `CREATE TABLE`) with a 1:1 match — **nothing is missing**; the
+   "12" is a propagated headline miscount. README was set to "12" to match the
+   spec's headline wording; `docs/` still say "12" in places. Harmless, optional to
+   reconcile — no code/schema impact.
 
 ---
 
