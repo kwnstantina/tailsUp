@@ -1,11 +1,15 @@
-// Builds the Hono app: mounts the two Phase 1 routes and installs JSON error
-// handling. Only GET /health and POST /sessions/:id/events exist (AC-12).
+// Builds the Hono app: mounts the Phase 1 routes (GET /health,
+// POST /sessions/:id/events) plus the Phase 2 trainer-view routes (dogs, events,
+// media) and installs JSON error handling. Phase 1 mounts stay unchanged (AC-12).
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { health } from './routes/health.js';
 import { sessions } from './routes/sessions.js';
+import { dogs } from './routes/dogs.js';
+import { events } from './routes/events.js';
+import { media } from './routes/media.js';
 
 export const app = new Hono();
 
@@ -18,6 +22,11 @@ app.use('*', cors());
 
 app.route('/', health);
 app.route('/', sessions);
+
+// Phase 2 — Trainer View read/media/start-session routes (design P2.3.11).
+app.route('/', dogs);
+app.route('/', events);
+app.route('/', media);
 
 // Consistent JSON error handling — never leak internals.
 app.onError((err, c) => {

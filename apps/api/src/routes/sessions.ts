@@ -16,12 +16,15 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { asc, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { OUTCOMES, TRIGGER_TYPES } from '@tailsup/shared';
-import type { BehaviorEventDTO } from '@tailsup/shared';
+import type {
+  BehaviorEventDTO,
+  BehaviorEventListItemDTO,
+} from '@tailsup/shared';
 import { db } from '../db/client.js';
-import { behaviorEvent, dog, protocol, session } from '../db/schema.js';
+import { behaviorEvent, dog, media, protocol, session } from '../db/schema.js';
 
 // Built from the shared arrays — exact same literals the pgEnum + app use (FR-9).
 const eventBody = z.object({
@@ -111,4 +114,63 @@ sessions.post('/sessions/:id/events', zValidator('json', eventBody), async (c) =
   };
 
   return c.json(dto, 201);
+});
+
+// GET /sessions/:id/events (FR-A5, AC-3, design P2.3.5) — Phase 2 read.
+//
+// Returns the session's events CHRONOLOGICAL ascending (a single session reads
+// top-to-bottom; the timeline is the reverse-chron view). Each row is a
+// BehaviorEventListItemDTO (the Phase 1 BehaviorEventDTO shape + a media COUNT).
+// Media counts are batched in ONE query via inArray (no N+1, NFR-7).
+sessions.get('/sessions/:id/events', async (c) => {
+  const id = c.req.param('id');
+
+  // 1. Session existence -> 404.
+  const [sessionRow] = await db
+    .select()
+    .from(session)
+    .where(eq(session.id, id))
+    .limit(1);
+
+  if (!sessionRow) {
+    return c.json({ error: 'session not found' }, 404);
+  }
+
+  // 2. Events for the session, chronological ascending (uses the composite index).
+  const eventRows = await db
+    .select()
+    .from(behaviorEvent)
+    .where(eq(behaviorEvent.sessionId, id))
+    .orderBy(asc(behaviorEvent.occurredAt));
+
+  // 3. Batch the media counts (one query for all events; 0 when absent).
+  const eventIds = eventRows.map((e) => e.id);
+  const countRows = eventIds.length
+    ? await db
+        .select({ eventId: media.eventId, c: count() })
+        .from(media)
+        .where(inArray(media.eventId, eventIds))
+        .groupBy(media.eventId)
+    : [];
+
+  const countByEvent = new Map<string, number>();
+  for (const row of countRows) {
+    countByEvent.set(row.eventId, Number(row.c));
+  }
+
+  const result: BehaviorEventListItemDTO[] = eventRows.map((row) => ({
+    id: row.id,
+    sessionId: row.sessionId,
+    occurredAt: row.occurredAt.toISOString(),
+    triggerType: row.triggerType as BehaviorEventDTO['triggerType'],
+    thresholdMeters: row.thresholdMeters,
+    intensity: row.intensity,
+    outcome: row.outcome as BehaviorEventDTO['outcome'],
+    intervention: row.intervention,
+    note: row.note,
+    tags: row.tags ?? null,
+    mediaCount: countByEvent.get(row.id) ?? 0,
+  }));
+
+  return c.json(result, 200);
 });

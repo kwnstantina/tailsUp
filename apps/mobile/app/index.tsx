@@ -44,6 +44,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link } from 'expo-router';
 import type { HealthDTO } from '@tailsup/shared';
 
 // Read the API base URL via STATIC dot-access only — Expo inlines EXPO_PUBLIC_*
@@ -113,6 +114,20 @@ export default function HealthScreen() {
             {status.kind === 'loading' ? 'Checking…' : 'Re-check'}
           </Text>
         </Pressable>
+
+        {/* Phase 2 entry point — the trainer's dog list. */}
+        <Link href="/dogs" asChild>
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.button,
+              styles.buttonSecondary,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.buttonText}>Open Trainer View · My Dogs →</Text>
+          </Pressable>
+        </Link>
       </ScrollView>
     </SafeAreaView>
   );
@@ -285,6 +300,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
+  },
+  buttonSecondary: {
+    backgroundColor: '#0f172a',
   },
   buttonPressed: {
     backgroundColor: '#1d4ed8',
