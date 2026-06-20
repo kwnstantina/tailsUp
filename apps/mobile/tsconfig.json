@@ -1,0 +1,20 @@
+{
+  "extends": ["expo/tsconfig.base", "../../tsconfig.base.json"],
+  "compilerOptions": {
+    "strict": true,
+    // baseUrl/paths are re-declared here because `paths` resolve relative to the
+    // tsconfig that declares them. Point the alias at the monorepo's shared package
+    // so `@tailsup/shared` resolves from the Expo app for both the editor and tsc.
+    "baseUrl": ".",
+    "paths": {
+      "@tailsup/shared": ["../../packages/shared/src/index.ts"],
+      "@tailsup/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
+}

@@ -1,0 +1,101 @@
+# TailsUp — Daily PostgreSQL backup to Cloudflare R2
+#
+# What this does: every day at 03:00 UTC (and on demand) it runs `pg_dump`
+# against the production database and uploads the compressed dump to a
+# SEPARATE Cloudflare R2 "backups" bucket via the AWS CLI pointed at R2's
+# S3-compatible endpoint. Database backups run from day one (FR-10, AC-10).
+#
+# ---------------------------------------------------------------------------
+# REQUIRED GitHub Secrets (Settings -> Secrets and variables -> Actions).
+# NONE of these values are committed to the repo — they are read only via
+# ${{ secrets.* }} at runtime:
+#   DATABASE_URL          Production Postgres connection string (Railway PUBLIC
+#                         connection string — see IPv4 note below). Source DB
+#                         for pg_dump.
+#   R2_ACCOUNT_ID         Cloudflare account id; forms the R2 S3 endpoint
+#                         https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+#   R2_ACCESS_KEY_ID      R2 API token Access Key ID  (token must be
+#                         "Object Read & Write" — see R2 token note below)
+#   R2_SECRET_ACCESS_KEY  R2 API token Secret Access Key
+#   R2_BACKUP_BUCKET      Name of the SEPARATE backups bucket (distinct from
+#                         the media bucket R2_BUCKET — keeps dumps isolated)
+# ---------------------------------------------------------------------------
+#
+# THREE PITFALLS — read before the first run:
+#  1. pg_dump MAJOR VERSION MUST MATCH the Railway Postgres SERVER major.
+#     A client older than the server major errors out ("server version
+#     mismatch"). Ubuntu's default pg_dump may be the wrong major, so we
+#     install postgresql-client-<PG_MAJOR> from the official PostgreSQL (PGDG)
+#     apt repo and call its absolute binary path. CONFIRM the server major
+#     first with:  psql "$DATABASE_URL" -c "SELECT version();"  (or check the
+#     Railway dashboard) and set PG_MAJOR below accordingly.
+#  2. R2 token scope: the R2 API token MUST be "Object Read & Write".
+#     A Read-Only token fails the upload (403) after retries.
+#  3. IPv4-only runners: GitHub-hosted runners are IPv4-outbound. Use
+#     Railway's PUBLIC connection string for DATABASE_URL (it is reachable
+#     over IPv4); an IPv6-only host throws "Network is unreachable".
+
+name: db-backup
+
+on:
+  schedule:
+    # Daily at 03:00 UTC. Cron is always UTC on GitHub Actions.
+    - cron: '0 3 * * *'
+  # Allows running the backup on demand from the Actions tab once the
+  # secrets above are configured.
+  workflow_dispatch: {}
+
+# No write access to repo contents is needed for a backup job.
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      # >>> SET THIS to the Railway Postgres SERVER major version (pitfall #1). <<<
+      # e.g. 16 for PostgreSQL 16.x. Must match the server major exactly.
+      PG_MAJOR: '16'
+    steps:
+      - name: Install matching pg_dump from the PGDG apt repo
+        # Installs postgresql-client-${PG_MAJOR} so pg_dump's major matches the
+        # server (pitfall #1). The binary lives at the absolute path used below.
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y "postgresql-client-${PG_MAJOR}"
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" --version
+
+      - name: Dump the database (custom format, compressed)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # -Fc = custom format: compressed and restorable via pg_restore,
+          # while remaining a portable pg_dump artifact (NFR-3).
+          STAMP="$(date -u +%F)"            # YYYY-MM-DD (UTC)
+          echo "DUMP_FILE=tailsup-${STAMP}.dump" >> "$GITHUB_ENV"
+          echo "DUMP_DATE=${STAMP}" >> "$GITHUB_ENV"
+          "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" "$DATABASE_URL" \
+            -Fc -f "tailsup-${STAMP}.dump"
+
+      - name: Upload the dump to Cloudflare R2 (S3-compatible)
+        env:
+          # AWS CLI reads R2 credentials from these standard env vars, mapped
+          # from the R2 GitHub Secrets. region=auto is REQUIRED for R2.
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          # Date-PREFIXED key (YYYY-MM-DD/...) gives natural ordering and lets a
+          # future R2 lifecycle rule (e.g. 30-day expiry) be added with no code
+          # change. Uploads to the SEPARATE backups bucket, not the media bucket.
+          aws s3 cp "${DUMP_FILE}" \
+            "s3://${{ secrets.R2_BACKUP_BUCKET }}/${DUMP_DATE}/${DUMP_FILE}" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
