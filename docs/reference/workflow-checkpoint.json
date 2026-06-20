@@ -13,9 +13,10 @@
     "TECHNICAL_RESEARCH_FILES": [],
     "PLAN_FILE": "docs/design/plan-001-tailsup-phase1-foundations.md",
     "DESIGN_FILE": "docs/design/project-design.md",
-    "DEPENDENCY_VALIDATION_FILE": null,
+    "DEPENDENCY_VALIDATION_FILE": "docs/reference/dependency-validation-tailsup.md",
     "TEST_BUILD_REPORT_FILES": []
   },
+  "dependency_decision": "User accepted/deferred 23 moderate dev-tooling-only advisories (Phase 8). Fixes would require Expo SDK 54->56 upgrade or drizzle-kit downgrade, both out of Phase 1 scope.",
   "known_issues_for_review": [
     "TS6059 in apps/api typecheck: apps/api/tsconfig.json sets outDir/noEmit:false, imposing rootDir=apps/api, but @tailsup/shared is consumed as source from packages/shared/src (outside rootDir). Fix: make api tsconfig noEmit-only (drop outDir/rootDir) and run api via tsx; OR adjust build to a bundler.",
     "Data model has 11 entities (not 12 — early-doc miscount). All 11 tables present and correct in migration 0000_amused_brood.sql.",
