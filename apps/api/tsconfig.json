@@ -1,10 +1,15 @@
 {
+  // Typecheck-oriented config. The API runs via `tsx` (dev/start) and the
+  // shared package is consumed as SOURCE from packages/shared/src via the
+  // @tailsup/shared path alias (a deliberate no-build shared package, design
+  // §8). Emitting here would impose rootDir = apps/api and reject the
+  // out-of-rootDir shared source (TS6059), so this config is noEmit only —
+  // matching tsconfig.base.json. The `build` script is `tsc --noEmit`
+  // (a typecheck gate); no JS is emitted because the runtime is tsx.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "noEmit": false,
-    "outDir": "dist",
-    "rootDir": "."
+    "noEmit": true
   },
   "include": ["src", "drizzle.config.ts"]
 }

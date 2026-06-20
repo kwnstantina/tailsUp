@@ -71,7 +71,7 @@ is:
 cd apps/api && npm run db:generate && npm run db:migrate
 ```
 
-A successful `db:migrate` creates all 12 tables (singular names), the 6 enums,
+A successful `db:migrate` creates all 11 tables (singular names), the 6 enums,
 the `behavior_event.tags` JSONB column with its GIN index, and the required
 indexes.
 
@@ -197,7 +197,7 @@ To run the backup manually once secrets are set: open the **Actions** tab →
 
 ## Phase boundary
 
-This is **Phase 1 — Foundations**. The schema covers all 12 entities, but only
+This is **Phase 1 — Foundations**. The schema covers all 11 entities, but only
 two endpoints are implemented: **`GET /health`** and
 **`POST /sessions/:id/events`** (AC-12). The following are intentionally **NOT**
 built yet:

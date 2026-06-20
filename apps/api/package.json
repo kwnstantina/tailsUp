@@ -10,7 +10,7 @@
     "db:migrate": "tsx src/migrate.ts",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.0",
