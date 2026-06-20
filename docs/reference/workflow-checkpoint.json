@@ -1,0 +1,21 @@
+{
+  "workflow": "team-workflow",
+  "timestamp": "2026-06-20T20:45:00Z",
+  "request_summary": "TailsUp Phase 2 - Trainer view: 4-tap quick-logging screen (writes BehaviorEvents), post-session detail screen (note, tags, video upload via R2 presign), dog timeline. Requires POST /media/presign + read endpoints. Auth still deferred to Phase 3.",
+  "product_phase": 2,
+  "last_completed_phase": 0,
+  "last_completed_phase_name": "Phase 2 workflow started",
+  "environment_notes": "Node 20.20.2 active via nvm. Phase 1 complete + demoed (commits through 687a7fe). For Phase 2 DB demos: docker run postgres:16 (container tailsup-pg), .env has DATABASE_URL.",
+  "artifacts": {
+    "REFINED_REQUEST_FILE": null,
+    "CODEBASE_SCAN_FILE": null,
+    "INVESTIGATION_FILE": null,
+    "TECHNICAL_RESEARCH_FILES": [],
+    "PLAN_FILE": null,
+    "DESIGN_FILE": "docs/design/project-design.md",
+    "DEPENDENCY_VALIDATION_FILE": null,
+    "TEST_BUILD_REPORT_FILES": []
+  },
+  "phase1_summary": "Monorepo (api/mobile/shared), 11-entity schema+migration, /health + POST events, .env.example, daily pg_dump->R2 action, Expo /health screen, 31 api tests, CORS. Live-demoed end-to-end.",
+  "phases": []
+}

@@ -2,27 +2,29 @@
 
 > Project-level functional-requirements ledger for **TailsUp**, a data-driven dog-training platform.
 > Source of truth: `docs/reference/refined-request-tailsup.md` (refined spec) and `docs/reference/investigation-tailsup-phase1.md` (wiring investigation).
-> This ledger records the **functional requirements (FR-1..FR-11)** and the **full 12-entity data model**. It spans the whole product; the **Phase** column marks when each item is delivered. Only Phase 1 items are in active scope now.
+> This ledger records the **functional requirements** and the **full 12-entity data model**. It spans the whole product; the **Phase** column marks when each item is delivered. **Phase 1 (FR-1..FR-11) is shipped; Phase 2 — Trainer View (FR-M1..FR-M8, FR-A1..FR-A12) is in active scope.**
 
-Status legend: `planned` (in active Phase 1 scope) · `context` (later phase, recorded only).
+Status legend: `done` (shipped) · `planned` (in active scope now) · `context` (later phase, recorded only).
+
+> **Phase 1 is shipped.** Its FR-1..FR-11 below are marked `done`. **Phase 2 — Trainer View is now in active scope** (plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`); its requirements are recorded as FR-M1..FR-M8 (mobile) and FR-A1..FR-A11 (API) in the new Phase 2 section.
 
 ---
 
-## Functional Requirements
+## Functional Requirements (Phase 1 — shipped)
 
 | ID | Requirement | Phase | Status | Maps to AC |
 | --- | --- | --- | --- | --- |
-| **FR-1** | **Monorepo workspaces.** Root `package.json` declares npm workspaces covering `apps/*` and `packages/*` (at minimum `apps/api`, `apps/mobile`, `packages/shared`). Cross-package imports resolve: `apps/api` and `apps/mobile` can both import from `packages/shared`. | 1 | planned | AC-1 |
-| **FR-2** | **Full database schema.** All 12 entities from the data model are defined in Drizzle with the exact fields, types, foreign keys, nullability, enums, and JSONB columns specified. Table names use **SINGULAR** form. | 1 | planned | AC-3, AC-4 |
-| **FR-3** | **Migrations.** Drizzle migrations are generated for the full schema and apply cleanly to an empty PostgreSQL database, producing all tables, foreign keys, enums, and indexes. | 1 | planned | AC-3 |
-| **FR-4** | **Indexes.** After migration these exist: composite index on `behavior_event(sessionId, occurredAt)`; composite index on `session(dogId, startedAt)`; **GIN** index on `behavior_event.tags`; index on `dog(clientId)`; index on `client(trainerId)`. | 1 | planned | AC-5 |
-| **FR-5** | **`GET /health`.** Returns HTTP 200 with a small JSON body indicating the service is up (and, ideally, that the database is reachable). | 1 | planned | AC-6 |
-| **FR-6** | **`POST /sessions/:id/events`.** Accepts JSON `{ triggerType, thresholdMeters, intensity, outcome, intervention }`; validates against shared enums and numeric ranges; inserts a `BehaviorEvent` linked to the session `:id`; persists the `intervention → outcome` linkage; returns the created event (or its id) with a 2xx. `intervention` defaults from the owning dog's `Protocol.defaultIntervention` when omitted. | 1 | planned | AC-7 |
-| **FR-7** | **Environment template.** `.env.example` lists every required variable with placeholder values and brief inline comments, and **no real secrets**. | 1 | planned | AC-8 |
-| **FR-8** | **Mobile connectivity screen.** The Expo Router app launches and renders one screen that performs a request to `GET /health` against a configurable API base URL and displays success/failure plus the returned payload. | 1 | planned | AC-9 |
-| **FR-9** | **Shared types consumed by both ends.** The enums for `triggerType` and `outcome` (and any DTOs used by the Phase 1 endpoint) are defined once in `packages/shared` and imported by both `apps/api` (validation) and `apps/mobile`. | 1 | planned | AC-1, AC-7 |
-| **FR-10** | **Automated daily backup.** A GitHub Actions workflow runs on a daily schedule, executes `pg_dump` against the configured database, and uploads the dump to the configured R2 bucket. Credentials come from GitHub Secrets, not committed. | 1 | planned | AC-10 |
-| **FR-11** | **Local run/test docs.** A README (or equivalent) documents the exact commands to: install dependencies, run migrations, start the API, start the mobile app, and verify the `/health` round-trip end to end. | 1 | planned | AC-11 |
+| **FR-1** | **Monorepo workspaces.** Root `package.json` declares npm workspaces covering `apps/*` and `packages/*` (at minimum `apps/api`, `apps/mobile`, `packages/shared`). Cross-package imports resolve: `apps/api` and `apps/mobile` can both import from `packages/shared`. | 1 | done | AC-1 |
+| **FR-2** | **Full database schema.** All 12 entities from the data model are defined in Drizzle with the exact fields, types, foreign keys, nullability, enums, and JSONB columns specified. Table names use **SINGULAR** form. | 1 | done | AC-3, AC-4 |
+| **FR-3** | **Migrations.** Drizzle migrations are generated for the full schema and apply cleanly to an empty PostgreSQL database, producing all tables, foreign keys, enums, and indexes. | 1 | done | AC-3 |
+| **FR-4** | **Indexes.** After migration these exist: composite index on `behavior_event(sessionId, occurredAt)`; composite index on `session(dogId, startedAt)`; **GIN** index on `behavior_event.tags`; index on `dog(clientId)`; index on `client(trainerId)`. | 1 | done | AC-5 |
+| **FR-5** | **`GET /health`.** Returns HTTP 200 with a small JSON body indicating the service is up (and, ideally, that the database is reachable). | 1 | done | AC-6 |
+| **FR-6** | **`POST /sessions/:id/events`.** Accepts JSON `{ triggerType, thresholdMeters, intensity, outcome, intervention }`; validates against shared enums and numeric ranges; inserts a `BehaviorEvent` linked to the session `:id`; persists the `intervention → outcome` linkage; returns the created event (or its id) with a 2xx. `intervention` defaults from the owning dog's `Protocol.defaultIntervention` when omitted. | 1 | done | AC-7 |
+| **FR-7** | **Environment template.** `.env.example` lists every required variable with placeholder values and brief inline comments, and **no real secrets**. | 1 | done | AC-8 |
+| **FR-8** | **Mobile connectivity screen.** The Expo Router app launches and renders one screen that performs a request to `GET /health` against a configurable API base URL and displays success/failure plus the returned payload. | 1 | done | AC-9 |
+| **FR-9** | **Shared types consumed by both ends.** The enums for `triggerType` and `outcome` (and any DTOs used by the Phase 1 endpoint) are defined once in `packages/shared` and imported by both `apps/api` (validation) and `apps/mobile`. | 1 | done | AC-1, AC-7 |
+| **FR-10** | **Automated daily backup.** A GitHub Actions workflow runs on a daily schedule, executes `pg_dump` against the configured database, and uploads the dump to the configured R2 bucket. Credentials come from GitHub Secrets, not committed. | 1 | done | AC-10 |
+| **FR-11** | **Local run/test docs.** A README (or equivalent) documents the exact commands to: install dependencies, run migrations, start the API, start the mobile app, and verify the `/health` round-trip end to end. | 1 | done | AC-11 |
 
 ### Non-functional requirements (cross-cutting, honored in Phase 1)
 
@@ -35,6 +37,55 @@ Status legend: `planned` (in active Phase 1 scope) · `context` (later phase, re
 | NFR-5 | Secrets hygiene — no secret values committed; `.env` git-ignored; only `.env.example` committed; CI uses GitHub Secrets. |
 | NFR-6 | Offline-capable later — the 4-tap write must not be architecturally precluded from future offline queueing. (Drives: **UUID** client-generatable PKs.) |
 | NFR-7 | Web-capable single codebase — Expo Router serves iOS/Android/web from one codebase; no separate Next.js site. |
+
+---
+
+## Functional Requirements (Phase 2 — Trainer View, active scope)
+
+> Source: `docs/reference/refined-request-phase2.md` · Plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`. Builds the trainer-facing Expo Router screens + the supporting read/media API + new `@tailsup/shared` DTOs. **No** auth, public site, client view, AI, leads/bookings, or schema migration (the `media`/`note`/`tags` columns already exist from Phase 1). All Phase 2 endpoints remain **unauthenticated**.
+
+### Mobile (trainer-facing Expo Router screens)
+
+| ID | Requirement | Phase | Status | Maps to AC |
+| --- | --- | --- | --- | --- |
+| **FR-M1** | **4-tap quick-logging screen** (`app/sessions/[id]/log.tsx`). Tap targets for `triggerType` (5 from `TRIGGER_TYPES`), `outcome` (3 from `OUTCOMES`), `intensity` (1–10), `thresholdMeters`; single submit posts `POST /sessions/:id/events` **omitting `intervention`** (server defaults it); resets immediately on success. ≤ 4 deliberate taps + submit, sensible defaults pre-selected. | 2 | planned | AC-8 |
+| **FR-M2** | **Quick-log resilience.** Clear pending/success/error states; in-progress selections survive a failed request (retry without re-tapping); `404` (unknown session) and `400` (no protocol default + intervention omitted) surfaced with actionable messages (OQ-8 one-time intervention prompt). | 2 | planned | AC-8 |
+| **FR-M3** | **Post-session detail screen** (`app/events/[id].tsx`). Loads one `BehaviorEvent` (note/tags/media); edits `note` (multiline) and manages `tags` (add/remove); persists via `PATCH /events/:id`; the four tap fields shown read-only. | 2 | planned | AC-9 |
+| **FR-M4** | **Video upload (direct-to-R2).** Pick video (`expo-image-picker`, `mediaTypes:['videos']`) → `POST /media/presign` → upload bytes **directly to R2** (native: new `expo-file-system` File API `createUploadTask` BINARY_CONTENT PUT; web: `fetch` PUT; `Platform.OS` branch; never legacy `uploadAsync`) → `POST /events/:id/media` to persist. Progress + success/failure shown; never streams through the API. | 2 | planned | AC-6, AC-9 |
+| **FR-M5** | **Dog timeline** (`app/dogs/[id]/timeline.tsx`). `GET /dogs/:id/timeline` rendered **reverse-chronological, grouped by session** (header `startedAt`/`location`); each event row shows tap fields + `intervention` + note/tag/media indicators; row tap → detail screen. | 2 | planned | AC-10 |
+| **FR-M6** | **Dog list / entry point** (`app/dogs/index.tsx`). Lists the current trainer's dogs (`GET /trainers/:trainerId/dogs`); routes into a dog timeline and into starting a session (`POST /dogs/:id/sessions`) for quick-logging. Trainer resolved via `EXPO_PUBLIC_TRAINER_ID` (OQ-1). | 2 | planned | AC-3, AC-8 |
+| **FR-M7** | **Typed API client** (`apps/mobile/lib/api.ts`). Wraps `EXPO_PUBLIC_API_URL` (static dot-access, Metro rule); types every request/response with the new `@tailsup/shared` DTOs; no hard-coded base URL beyond the dev default; no data-fetching library. | 2 | planned | AC-11 |
+| **FR-M8** | **Navigation.** Expo Router connects dog list → timeline → event detail, and dog list/session → quick-log; works on Expo **web** and is not architecturally web-only. | 2 | planned | AC-8, AC-9, AC-10 |
+
+### API (supporting endpoints the screens require)
+
+| ID | Requirement | Phase | Status | Maps to AC |
+| --- | --- | --- | --- | --- |
+| **FR-A1** | **`POST /media/presign`.** Body `{ eventId, contentType }`; 404 unknown event, 400 disallowed type (allow `video/mp4`/`video/quicktime`); generates key `events/{eventId}/{uuid}.{ext}`; presigned **PUT** URL for `R2_BUCKET`, `expiresIn:600`, signed `ContentType`; returns `{ uploadUrl, method, headers, key, expiresInSeconds }`; **creates no `media` row**; 5xx/503 when R2 unconfigured. **`requestChecksumCalculation`/`responseChecksumValidation:'WHEN_REQUIRED'` mandatory** (else R2 rejects). | 2 | planned | AC-5 |
+| **FR-A2** | **Media persistence flow.** `POST /events/:id/media` body `{ key, contentType }` records the row after upload confirm: derives `blobUrl` from key (key-only/private, OQ-9), `type` from content type, inserts `media`, returns `201 MediaDTO`. Presign creates nothing (two-step, OQ-2). | 2 | planned | AC-7 |
+| **FR-A3** | **`GET /trainers/:trainerId/dogs`** → `200 DogSummaryDTO[]` (dog→client→trainer join); unknown trainer → `[]`. | 2 | planned | AC-3 |
+| **FR-A4** | **`GET /dogs/:id`** → `200 DogDetailDTO` (= `DogSummaryDTO` + `sessions: SessionSummaryDTO[]` each with `eventCount`); 404 unknown. | 2 | planned | AC-3 |
+| **FR-A5** | **`GET /sessions/:id/events`** → `200` events chronological (with `mediaCount` per OQ-3); 404 unknown. | 2 | planned | AC-3 |
+| **FR-A6** | **`GET /dogs/:id/timeline`** → `200 DogTimelineDTO` (`{ dog, sessions: TimelineSessionDTO[] }`), sessions + events reverse-chronological, grouped by session; 404 unknown. Built with plain `select()` + `inArray` (nested ordering). | 2 | planned | AC-3 |
+| **FR-A7** | **`PATCH /events/:id`** updates **only** `note` (string\|null) and `tags` (string[]\|null); tap fields + `intervention` immutable (moat); partial; returns `200 BehaviorEventDTO`; 404 unknown. | 2 | planned | AC-4 |
+| **FR-A8** | **`GET /events/:id`** → `200 BehaviorEventWithMediaDTO` (= `BehaviorEventDTO` + `media: MediaDTO[]`); 404 unknown. | 2 | planned | AC-3 |
+| **FR-A9** | **Routing/registration.** New routes mounted in `apps/api/src/app.ts` following the Hono sub-app pattern (`export const <name> = new Hono()`, `app.route('/', ...)`); reuse existing `cors()`/`onError`/`notFound`. Modules: `routes/dogs.ts`, `routes/events.ts`, `routes/media.ts`, extend `routes/sessions.ts`. | 2 | planned | AC-3, AC-12 |
+| **FR-A10** | **Validation.** All bodies/params validated with `@hono/zod-validator` + Zod, reusing `@tailsup/shared` arrays where applicable; invalid → 400, unknown id → 404 `{ error }`. | 2 | planned | AC-3, AC-4, AC-5 |
+| **FR-A11** | **Shared DTOs.** Add to `packages/shared/src/dtos.ts` (pure TS, barrel re-export): `DogSummaryDTO`, `DogDetailDTO`, `SessionSummaryDTO`, `DogTimelineDTO`, `TimelineSessionDTO`, `BehaviorEventWithMediaDTO`, `MediaDTO`, `PresignRequest`, `PresignResponse`, `CreateMediaInput`, `UpdateBehaviorEventInput` (+ `BehaviorEventListItemDTO`). | 2 | planned | AC-1, AC-2 |
+| **FR-A12** | **Start a session (OQ-7).** Minimal `POST /dogs/:id/sessions` body `{ startedAt?, location? }` (default `startedAt=now`) → `201 SessionSummaryDTO`; 404 unknown dog. Unblocks FR-M1 (cannot log events without a session). | 2 | planned | AC-3 |
+
+### Phase 2 non-functional requirements
+
+| ID | Requirement |
+| --- | --- |
+| NFR-P2-1 | Keep the 4-tap promise — pre-defaulted fields, server-defaulted intervention, ≤ 4 deliberate taps + submit, no blocking dialogs/round-trips/scroll between selection and submit. |
+| NFR-P2-2 | Direct-to-R2 upload — device PUTs bytes straight to R2; the API never receives/proxies the file (no Railway egress). |
+| NFR-P2-3 | TypeScript strict everywhere — zero errors across shared/api/mobile; new DTOs are the single shared source of truth. |
+| NFR-P2-4 | No config fallbacks — R2 creds read via lazy throw-on-missing accessor; presign returns explicit 5xx/503 when unconfigured, never a fabricated URL. R2 vars are **not** added to startup `config.ts`. |
+| NFR-P2-5 | Shared package stays pure — only types/const arrays; no `drizzle-orm`/`pg`/AWS SDK/Node built-ins. AWS SDK lives only in `apps/api`. |
+| NFR-P2-6 | Consistency with Phase 1 — singular tables; camelCase→snake_case; Zod over shared arrays; ESM `.js` specifiers; static `EXPO_PUBLIC_*` dot-access; `{ error }` bodies; reverse-chron reads use existing composite indexes. |
+| NFR-P2-7 | Read performance — existing indexes; avoid N+1 via `inArray` batching; no new index. |
+| NFR-P2-8 | Offline-capable later (no regression) — UUID PKs preserve future offline queueing; no offline implementation now. |
 
 ---
 
@@ -78,27 +129,38 @@ All 12 entities are implemented in Drizzle in Phase 1. **Table names are SINGULA
 
 ---
 
-## Endpoint Catalog (context — only the two Phase-1 endpoints are implemented now)
+## Endpoint Catalog
 
-| Endpoint | Auth | Phase | In Phase 1? |
+> Phase 1 endpoints are shipped; Phase 2 endpoints are in active scope (plan 002). Phase 2 endpoints remain **unauthenticated** (auth deferred to Phase 3).
+
+| Endpoint | Auth | Phase | Status |
 | --- | --- | --- | --- |
-| `GET /health` | none | 1 | **Yes** |
-| `POST /sessions/:id/events` | none enforced in P1 | 1 | **Yes** |
+| `GET /health` | none | 1 | **shipped** |
+| `POST /sessions/:id/events` | none enforced in P1 | 1 | **shipped** |
+| `GET /trainers/:trainerId/dogs` | none (P2) | 2 | **planned** |
+| `GET /dogs/:id` | none (P2) | 2 | **planned** |
+| `GET /dogs/:id/timeline` | none (P2) | 2 | **planned** |
+| `POST /dogs/:id/sessions` | none (P2) | 2 | **planned** (OQ-7) |
+| `GET /sessions/:id/events` | none (P2) | 2 | **planned** |
+| `GET /events/:id` | none (P2) | 2 | **planned** |
+| `PATCH /events/:id` | none (P2) | 2 | **planned** |
+| `POST /media/presign` | none (P2; client/app from P3) | 2 | **planned** |
+| `POST /events/:id/media` | none (P2) | 2 | **planned** |
 | `POST /leads` | public | 3 | No |
 | `POST /bookings` | public | 3 | No |
 | `PATCH /bookings/:id/status` | trainer | 3 | No |
 | `POST /leads/:id/convert` | trainer | 3 | No |
-| `POST /media/presign` | client/app | 2 | No |
 | `POST /dogs/:id/summary` | trainer | 4 | No |
 
 ---
 
 ## Later-phase functional scope (context only — NOT built now)
 
-- **Phase 2 — Trainer view:** 4-tap quick-logging UI writing BehaviorEvents; post-session detail (note, tags, video upload via R2 presign); dog timeline; `POST /media/presign`.
+> **Phase 2 — Trainer view is no longer "later phase"** — it is in active scope and detailed above as FR-M1..FR-M8 + FR-A1..FR-A12 (plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`).
+
 - **Phase 3 — Public site + Client view:** website pages (Home, About, Services, Results, Contact + lead form, Booking) with the Design System; BetterAuth with `trainer`/`client` roles; client dashboard (threshold-over-time graph, homework, reminders); trainer lead/booking management; `POST /leads`, `POST /bookings`, `PATCH /bookings/:id/status`, `POST /leads/:id/convert`.
 - **Phase 4 — AI & scale:** `POST /dogs/:id/summary` (Anthropic `claude-haiku-4-5`); AI spend-cap reminder; multi-tenant SaaS prep.
 
 ---
 
-_Phase 1 implementation plan: `docs/design/plan-001-tailsup-phase1-foundations.md`._
+_Phase 1 implementation plan: `docs/design/plan-001-tailsup-phase1-foundations.md` · Phase 2 implementation plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`._
