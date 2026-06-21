@@ -1,7 +1,7 @@
 // DTOs for the Phase 1 endpoints (single source of truth — FR-9).
 // PURE TypeScript types only — no runtime/server imports (Metro-safe).
 
-import type { TriggerType, Outcome, MediaType } from './enums';
+import type { TriggerType, Outcome, MediaType, BookingType, LeadStatus, BookingStatus } from './enums';
 
 // Request body for POST /sessions/:id/events
 // (intervention optional -> defaulted from the dog's Protocol.defaultIntervention)
@@ -131,4 +131,50 @@ export interface UpdateBehaviorEventInput {
 export interface MediaPlaybackUrlDTO {
   url: string;              // short-lived presigned R2 GET URL
   expiresInSeconds: number; // re-request on expiry
+}
+
+// ── Phase 3a DTOs (Public Site — lead/booking capture) — appended below Phase 2 ──
+
+// POST /leads request body (PUBLIC). `source` is set by the page (e.g. 'website-contact').
+export interface CreateLeadInput {
+  name: string;
+  contact: string;        // free-text email or phone
+  source: string;
+  message?: string;
+}
+
+// POST /leads response — mirrors the `lead` row (createdAt as ISO string).
+export interface LeadDTO {
+  id: string;
+  trainerId: string;
+  name: string;
+  contact: string;
+  source: string;
+  message: string | null;
+  status: LeadStatus;     // always 'new' on create
+  clientId: string | null;// always null on create
+  createdAt: string;      // ISO
+}
+
+// POST /bookings request body (PUBLIC). type ∈ BOOKING_TYPES; requestedAt ISO.
+// name/contact captured for follow-up; folded into `notes` on insert (no columns exist); leadId stays null in 3a (D-7).
+export interface CreateBookingInput {
+  type: BookingType;
+  requestedAt: string;    // ISO datetime
+  name: string;
+  contact: string;
+  notes?: string;
+}
+
+// POST /bookings response — mirrors the `booking` row (requestedAt/createdAt as ISO).
+export interface BookingDTO {
+  id: string;
+  trainerId: string;
+  leadId: string | null;
+  clientId: string | null;
+  type: BookingType;
+  requestedAt: string;    // ISO
+  status: BookingStatus;  // always 'requested' on create
+  notes: string | null;
+  createdAt: string;      // ISO
 }
