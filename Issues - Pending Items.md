@@ -2,6 +2,84 @@
 
 ---
 
+# PHASE 3a — Public business website + POST /leads + POST /bookings (integration verification)
+
+Whole-monorepo **integration verification** (2026-06-21, Node v20.20.2 / npm
+10.8.2, Windows 11). Verified against `refined-request-phase3.md` (the **3a** ACs),
+the Phase 3a section of `project-design.md`, and `design_system.md`. **No live
+PostgreSQL / no `RESEND_API_KEY` / no R2** (by design) — DB- and email-runtime ACs
+verified via the mocked vitest suite + static review; the live smoke test is a
+documented manual step. Full report:
+`docs/reference/integration-verification-phase3a.md`.
+
+**Verdict: READY** (for the user's Phase 3a review). Gates: shared/api/mobile
+typecheck exit 0 (strict, 0 errors); API build (`tsc --noEmit`) exit 0; **173/173
+API tests pass** (13 files; config 6 · email 11 · trainer 10 · r2 23 ·
+events-phase2 22 · media 20 · leads 8 · sessions-phase2 10 · health 3 · events 22
+· rate-limit 4 · dogs 27 · bookings 7); `git status --porcelain apps/api/drizzle`
+empty + `schema.ts` unchanged since Phase 1 `0ed0e8f` (no migration); Expo **web
+export** exit 0 (all six site pages + `health.html` emitted). No linter configured
+(expected). **All Phase 3a ACs (AC-3a-1..AC-3a-10) met.** No working-tree changes
+were needed in this pass (the report is the only new file).
+
+> Test-count note: the Phase 3a **code-review** entry below reports "148/148" —
+> that count predates the consolidated suite. A clean run today is **173/173**
+> (the expected figure), adding the config/email/trainer/rate-limit suites. No
+> tests were weakened or skipped.
+
+## PHASE 3a (integration) — UNRESOLVED ISSUES
+
+### Critical
+_None._
+
+### Important
+1. **Live-DB + live-Resend smoke test pending (AC-3a-5/6/7).** `POST /leads` and
+   `POST /bookings` were verified by 15 endpoint tests (8 leads + 7 bookings) +
+   the `email`/`trainer`/`rate-limit` suites + static review only — no live
+   PostgreSQL and no `RESEND_API_KEY` here. Before demo/deploy run the manual steps
+   in `docs/reference/integration-verification-phase3a.md` §4: set `DATABASE_URL`
+   → `npm run db:migrate -w apps/api` (already applied in Phase 1; **idempotent**,
+   no 3a migration) → seed a `trainer` (so `resolveTrainerId()` resolves and its
+   email is the Resend recipient) → start the API → `curl POST /leads` + `POST
+   /bookings` → confirm the 201 + the `[email:stub] new lead` log + the DB rows;
+   optionally set `RESEND_API_KEY` (+ `RESEND_FROM`) to send a real email (the send
+   is fire-and-forget, so the 201 is unaffected either way). Confidence high.
+
+### Minor / follow-ups (non-blocking)
+1. **SEO: per-page `<title>`/meta are CLIENT-SIDE ONLY (resolves the research
+   UNCERTAIN verdict).** Empirically confirmed by grepping the exported HTML:
+   `about.html`, `services.html`, and `index.html` all carry only the **site-wide
+   default** `<title>` from `+html.tsx` (`TailsUp — Επαγγελματική Εκπαίδευση
+   Σκύλων`); the per-page titles (`'Ποιοι Είμαστε — TailsUp'`, `'Υπηρεσίες —
+   TailsUp'`) and the per-page `<meta>`/`og:` tags are **NOT FOUND in any exported
+   HTML file** — expo-router `<Head>` applies them on the client after hydration.
+   `<html lang="el">` IS present statically in every page. No 3a AC requires
+   server-rendered per-page meta, so this is a **known limitation, NOT a blocker**;
+   a JS-executing crawler and human visitors see the right per-page title. Fix (if
+   ever required): resolve per-page title/description in the static render.
+2. **CORS intentionally allow-all for 3a** (`app.use('*', cors())`) — Phase 3b
+   tightens it to the known origin(s) with credentials once auth/cookies land
+   (noted in `app.ts`). Acceptable for 3a.
+3. **Rate limiter is in-memory, single-instance (by design for 3a).** 10/min/IP on
+   `/leads` + `/bookings`; resets on restart, not shared across instances. Prod
+   should add an edge/proxy limiter in front (noted in `app.ts`); no prod deploy in 3a.
+4. **README has no Phase 3a section yet** (its "Phase boundary" still lists Phase 3
+   as not built). No 3a AC requires README docs (README is the **3b** criterion
+   AC-3b-13), so this is a documentation follow-up, not a 3a gap.
+5. **Deferred dependency advisories (carried from Phases 1/2, unchanged).** The 3a
+   deps (`resend`, `hono-rate-limiter`, `react-native-svg`) added **no new**
+   advisories. The pre-existing 23 moderate npm-audit advisories remain deferred —
+   **MR-1** (20, Expo SDK 54 transitive: `postcss`/`uuid`/`js-yaml` in build/test
+   tooling) and **MR-2** (3, `drizzle-kit`→`@esbuild-kit`→`esbuild@~0.18`,
+   GHSA-67mh-4wv8-2f99) — all transitive dev/build tooling, none in the production
+   API or shipped mobile bundle. Resolve both before public launch.
+
+## PHASE 3a (integration) — RESOLVED THIS PASS
+_None — all automated gates were already green; no working-tree changes were
+required. The only new artifact is the verification report._
+
+---
+
 # PHASE 3a — Public business website + POST /leads + POST /bookings (code review)
 
 Senior code review of the Phase 3a implementation, 2026-06-21, Node v20.20.2,
