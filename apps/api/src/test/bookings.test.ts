@@ -26,7 +26,9 @@ const mocks = vi.hoisted(() => {
   const mockSelect = vi.fn(() => ({ from: mockFrom }));
 
   const mockReturning = vi.fn(() => Promise.resolve(insertResultQueue.shift() ?? []));
-  const mockValues = vi.fn(() => ({ returning: mockReturning }));
+  // Typed parameter so `mockValues.mock.calls[0][0]` is the inserted row payload
+  // (the route folds name/contact into `notes`) rather than the empty tuple `[]`.
+  const mockValues = vi.fn((_row: { notes: string }) => ({ returning: mockReturning }));
   const mockInsert = vi.fn(() => ({ values: mockValues }));
 
   return {
@@ -155,7 +157,7 @@ describe('POST /bookings', () => {
 
     await postBooking(VALID_BODY);
 
-    const insertedValues = mocks.mockValues.mock.calls[0][0] as { notes: string };
+    const insertedValues = mocks.mockValues.mock.calls[0][0];
     expect(insertedValues.notes).toBe('[Maria P. · maria@example.com] Mornings preferred.');
   });
 

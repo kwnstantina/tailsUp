@@ -22,6 +22,20 @@ import type { LeadDTO } from '@tailsup/shared';
 // Cached client — built on first use once a key is present.
 let client: Resend | null = null;
 
+// Escape user-supplied text before interpolating it into the email HTML body.
+// The lead fields (name/contact/source/message) are public, unauthenticated
+// input; even though email clients sandbox HTML (no script execution), raw
+// interpolation would let a submitter inject markup into the trainer's inbox.
+// Defence-in-depth: neutralise the five HTML-significant characters.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Lazy accessor: read RESEND_API_KEY at CALL time. Returns null (STUB path) when
 // the key is absent/blank — NEVER throws (the inversion of requiredR2()).
 function getClient(): Resend | null {
@@ -53,11 +67,14 @@ export async function sendLeadNotification(
   }
 
   // Resend resolves with { data, error }; it does NOT throw on API errors.
+  // User-supplied fields are HTML-escaped (defence-in-depth — see escapeHtml).
   const { error } = await c.emails.send({
     from: process.env.RESEND_FROM ?? 'TailsUp <onboarding@resend.dev>',
     to,
     subject: `New lead: ${lead.name}`,
-    html: `<p>New lead from ${lead.source}</p><p>${lead.name} — ${lead.contact}</p><p>${lead.message ?? ''}</p>`,
+    html: `<p>New lead from ${escapeHtml(lead.source)}</p><p>${escapeHtml(lead.name)} — ${escapeHtml(
+      lead.contact,
+    )}</p><p>${escapeHtml(lead.message ?? '')}</p>`,
   });
 
   if (error) {

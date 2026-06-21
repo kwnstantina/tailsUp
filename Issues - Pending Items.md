@@ -2,6 +2,174 @@
 
 ---
 
+# PHASE 3a — Public business website + POST /leads + POST /bookings (code review)
+
+Senior code review of the Phase 3a implementation, 2026-06-21, Node v20.20.2,
+Windows 11. Commits reviewed: `f90bd52` (Unit A shared lead/booking DTOs),
+`0ff5058` (Units B api endpoints + C1 mobile foundation), `4d4ed03` (Unit C2 the
+six public pages), `e4a10ae` (dep install). Reviewed against
+`refined-request-phase3.md` (the 3a ACs), `project-design.md` (Phase 3a),
+`design_system.md`, `plan-003-tailsup-phase3a-public-site.md`, and
+`investigation-phase3a.md`.
+
+**Verdict: PASS (with two working-tree fixes applied).** All three workspaces
+typecheck clean (strict, 0 errors) *after* the bookings.test.ts typing fix;
+**148/148 API tests pass** (31 Phase 1 + 102 Phase 2 + 7 leads + 8 bookings); no
+DB migration (`git status --porcelain apps/api/drizzle` empty, `schema.ts`
+unchanged since Phase 1 `0ed0e8f`). The business-first + premium-restraint
+Design-System verdict is **PASS** (see verifications). Two fixes applied to the
+working tree (not committed — the orchestrator commits): the known
+bookings.test.ts type errors, and a defence-in-depth HTML-escape on the lead
+notification email body.
+
+## PHASE 3a — UNRESOLVED ISSUES
+
+### Critical
+_None._
+
+### Important
+1. **Live-DB + live-Resend smoke test pending (public capture endpoints).** The
+   `POST /leads` and `POST /bookings` flows were verified by the mocked-DB unit
+   tests (15 new tests) + static review only — no live PostgreSQL and no
+   `RESEND_API_KEY` were available here. Before demo/deploy: set `DATABASE_URL`,
+   seed at least one `trainer` row (or set `PRACTICE_TRAINER_ID`), POST a lead and
+   a booking, and confirm the 201 + the DB rows; optionally set `RESEND_API_KEY` +
+   a verified `RESEND_FROM` and confirm the trainer receives the notification (the
+   send is fire-and-forget so the 201 is unaffected either way). Confidence is high
+   — the route logic is well-formed and the fire-and-forget/stub paths are
+   unit-tested.
+
+### Minor / follow-ups (non-blocking)
+1. **Rate limiter is in-memory, single-instance (D-8, by design for 3a).** The
+   `hono-rate-limiter` on `/leads` + `/bookings` (10 req/min/IP) resets on restart
+   and is not shared across instances. Fine for the single Phase 3 instance + local
+   acceptance; production should add an edge/proxy limiter in front (already noted
+   in `app.ts`). No prod deploy exists in Phase 3a.
+2. **CORS is intentionally allow-all for 3a.** `app.use('*', cors())` allows all
+   origins so the Expo web build can call the API. Phase 3b is slated to tighten
+   this to the known site/app origins once auth/cookies land (noted in `app.ts`).
+   Acceptable for 3a; flagged for the 3b hardening pass.
+3. **Email subject line carries the raw lead name (plain-text header, low risk).**
+   `email.ts` interpolates `lead.name` into the Resend `subject` field unescaped.
+   This is correct — the subject is a plain-text field (HTML-escaping it would
+   surface literal entities), and Resend sets it as a structured field (no raw SMTP
+   header concatenation); `name` is also Zod-capped at 200 chars. The HTML *body*
+   is now escaped (see Resolved). No further action.
+
+## PHASE 3a — RESOLVED THIS PASS
+
+### Known Issue — bookings.test.ts: 2 TypeScript errors (TS2352 + TS2493) — FIXED
+- **Symptom:** `tsc --noEmit` for `@tailsup/api` failed at
+  `src/test/bookings.test.ts:158`: `TS2352` (converting `undefined` to
+  `{ notes: string }`) and `TS2493` (tuple index 0 on `[]`). vitest passed (it
+  strips types), but the typecheck gate was red.
+- **Cause:** the hoisted `mockValues = vi.fn(() => ({ returning: mockReturning }))`
+  declared **no parameters**, so its `.mock.calls` element type inferred as the
+  empty tuple `[]`; `calls[0][0]` was therefore `undefined`, and the `as
+  { notes: string }` cast on it was rejected.
+- **Fix (working tree only):** typed the mock parameter —
+  `vi.fn((_row: { notes: string }) => ({ returning: mockReturning }))` — so
+  `mockValues.mock.calls[0][0]` is the inserted-row payload, and removed the now-
+  unnecessary `as { notes: string }` cast at line 158. The assertion (name/contact
+  folded into `notes`) is unchanged and still passes — behavior NOT weakened.
+- **Verified:** `npm run -s typecheck -w @tailsup/api` exits 0; all **148** tests
+  still pass (bookings 7/7 green).
+
+### Hardening — lead-notification email HTML did not escape user input — FIXED
+- **Symptom:** `lib/email.ts` interpolated the public, unauthenticated lead fields
+  (`source`, `name`, `contact`, `message`) raw into the notification email's HTML
+  body. Email clients sandbox HTML (no script exec), so this is low-severity, but
+  it is an unsanitized-input-into-HTML sink — a submitter could inject markup into
+  the trainer's inbox. (No AC required escaping; the prompt asked to flag/optionally
+  fix it.)
+- **Fix (working tree only):** added a small `escapeHtml()` helper (neutralises
+  `& < > " '`) and applied it to all four interpolated fields in the HTML body.
+  The plain-text `subject` is left as-is (escaping it would be wrong — see
+  Unresolved Minor 3). No test asserts on the HTML (the leads tests mock
+  `sendLeadNotification`), so behavior/tests are NOT weakened.
+- **Verified:** api typecheck 0 errors; 148/148 tests pass.
+
+## PHASE 3a — REVIEW VERIFICATIONS (all passed)
+
+- **Typecheck (strict, 0 errors):** `packages/shared` ✅ · `@tailsup/api` ✅ (0 after
+  the bookings.test.ts fix; was 2 errors) · `@tailsup/mobile` ✅.
+- **Tests:** `npm run -s test -w @tailsup/api` → **148/148 pass** before and after
+  the fixes (the failing item was a *typecheck* gate, not a test). The leads
+  fire-and-forget rejection test logs a deliberate non-fatal error (expected).
+- **No migration / phase boundary:** `git status --porcelain apps/api/drizzle`
+  empty; `apps/api/src/db/schema.ts` unchanged since Phase 1 `0ed0e8f`. No
+  name/contact columns added to `booking` — the captured contact is folded into
+  `notes` (`[name · contact] notes`); `lead`/`booking.trainerId` reuse the existing
+  NOT-NULL FK.
+- **`POST /leads` (routes/leads.ts + lib/email.ts + lib/trainer.ts):** Zod-validated
+  (name/contact/source min 1, caps 200/200/100; message cap 2000) → auto-400.
+  `resolveTrainerId()` reads `PRACTICE_TRAINER_ID` (lazy) → sole/oldest trainer →
+  throws `PracticeNotConfiguredError` → handler maps to **503** (never inserts an
+  empty trainerId). The email send is **fire-and-forget** (`void sendLeadNotification
+  (...).catch(...)`, NOT awaited) so a slow/keyless/failing Resend can neither block
+  nor fail the 201. `email.ts` reads `RESEND_API_KEY` **lazily** and **stubs (logs)
+  — not throws** when absent (the inverse of `requiredR2()`); Resend's `send()`
+  resolves `{ error }` (no throw) and a transport rejection is absorbed. Confirmed
+  `RESEND_API_KEY` / `RESEND_FROM` / `PRACTICE_TRAINER_ID` are NOT in `config.ts`.
+- **`POST /bookings` (routes/bookings.ts):** Zod validates `type ∈ BOOKING_TYPES`,
+  ISO `requestedAt` (`.datetime()`), name/contact min 1 + caps, notes cap 2000;
+  status defaults DB-side to `'requested'`; `leadId`/`clientId` null (D-7); 503 on
+  no-trainer; name/contact folded into `notes`.
+- **Rate limiting:** `publicWriteLimiter` (`hono-rate-limiter`, 10/min/IP, keyed by
+  `x-forwarded-for`→`x-real-ip`→`'public'`, 429 `{ error }`) applied **only** to
+  `/leads` + `/bookings`; the Phase 1/2 routes + their tests are unaffected (all
+  148 still pass).
+- **Mobile route grouping:** `(site)` (public) and `(app)` (authed trainer)
+  correct; the 5 moved screens keep their URLs (health is now `/health`, the rest
+  unchanged); `(app)/_layout.tsx` holds the dark `<Stack>`, `(site)/_layout.tsx`
+  holds `<SiteChrome>` + SEO defaults; no auth guard in 3a (3b adds it to `(app)`).
+- **SEO/head:** `+html.tsx` has `<html lang="el">` + charset/viewport + a default
+  title/description + favicon; every one of the six pages sets a per-page `<Head>`
+  (title/description/og) that overrides the defaults on web.
+- **i18n:** dependency-free EL/EN React context (default `'el'`), SSR-safe
+  (deterministic first render, hydrate from `localStorage` after mount), best-effort
+  persistence, accessible `LanguageToggle` (radiogroup, visible copper focus). Page
+  copy lives in per-page `copy = { el, en }` objects.
+- **Theme tokens:** `lib/theme.ts` matches `design_system.md` exactly — colors,
+  fonts (3 cuts: Fraunces 400/500 + Inter 400), the RN-converted type scale
+  (letterSpacing in pt, lineHeight in px), spacing/radii/layout/breakpoints, the
+  `useResponsive` rhythm helper.
+- **ProgressCurve:** per-instance gradient id via `useId()` (no RNW def-reuse
+  collision when multiple curves render on Results), flat-series guard
+  (`min===max`), Catmull-Rom→Bézier smoothing, explicit/measured width + numeric
+  height, `useReducedMotion()` read for the documented animation gate (static curve
+  rendered regardless — DS-6 compliant).
+- **PracticeMap split:** `.web.tsx` = keyless OSM `<iframe>` embed (generic Athens
+  coords); `.native.tsx` = Card + `Linking.openURL` fallback; `.d.ts` gives `tsc` a
+  single type for the bare import (so the web-only `<iframe>` never enters the
+  native typecheck). `lib/api.ts` `createLead`/`createBooking` match the
+  `CreateLeadInput`/`CreateBookingInput` DTOs.
+- **DESIGN-SYSTEM / business-first fidelity — PASS:** Home is about the **practice**
+  (calm/method/proof), with the data platform as a single teaser line linking into
+  `/services` — NOT about "an app". The **ProgressCurve appears only on Services**
+  (one curve, inside the page's single dark ProofBand) and is reused on **Results**
+  case cards (DS-5 explicitly permits the outcome arc) — **never on Home**. Dark
+  ProofBand used **at most once per page** (Home ×1, Services ×1 [the curve band],
+  About ×1; Services/Results have no *second* dark band). Copper is accents-only
+  (eyebrows, focus rings, small dots, the curve's gold line, footer detail) — **no
+  large copper surface**. Fraunces headings / Inter body throughout (with web FOUT
+  fallback stacks). **Visible focus** on every interactive element (copper ring via
+  `Pressable`'s `focused`, reserved border width to avoid layout shift; inputs draw
+  their own ring + remove the web UA outline). **Responsive** (centered max-width
+  containers, column→row at breakpoints, narrow horizontally-scroll nav). **Reduced
+  motion** respected (the only motion is the optional curve draw-on, gated on
+  `useReducedMotion`; default is static).
+- **Security:** public endpoints validate + cap all input (Zod); no committed
+  secrets (`.env`/`.env.example` only, the example documents the new optional vars
+  accurately); the email HTML body now escapes user input (fixed this pass); CORS
+  intentionally allow-all for 3a (noted above). Placeholder business details
+  (address/phone/email/hours, trainer name/photo/bio, case-study names) are clearly
+  bracketed — no fabricated real values, no testimonials presented as real.
+- **Shared package:** stays pure TS — `packages/shared/src` imports only its own
+  `./enums`/`./dtos` (type-only); no server/runtime imports (Metro-safe).
+
+---
+
 # PHASE 2 — Trainer View (integration verification)
 
 Whole-monorepo **integration verification** (2026-06-20, Node v20.20.2 / npm
