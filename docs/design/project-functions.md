@@ -89,6 +89,52 @@ Status legend: `done` (shipped) · `planned` (in active scope now) · `context` 
 
 ---
 
+## Functional Requirements (Phase 3a — Public business website + public capture, active scope)
+
+> Source: `docs/reference/refined-request-phase3.md` (Phase 3a scope, AC-3a-*) · Investigation: `docs/reference/investigation-phase3a.md` · SEO research: `docs/research/expo-router-static-head-sdk54.md` · Plan: `docs/design/plan-003-tailsup-phase3a-public-site.md`. Builds the **6 public website pages** (one Expo Router codebase, web-first) on the kickoff's **Design System** + the **2 PUBLIC capture endpoints** (`POST /leads` with a Resend email stub, `POST /bookings`) + new pure-TS `@tailsup/shared` DTOs. **No auth, no dashboards, no management/convert endpoints, no schema migration** (the `lead`/`booking` tables already exist from Phase 1). BetterAuth, the client/trainer dashboards, and the trainer-auth endpoints are **Phase 3b**. AI/multi-tenant are **Phase 4**.
+
+### Website (public Expo Router `(site)` route group, no auth)
+
+| ID | Requirement | Phase | Status | Maps to AC |
+| --- | --- | --- | --- | --- |
+| **FR-W1** | **Route structure in ONE Expo Router tree.** New public `app/(site)/*` route group (Design-System chrome: Greek nav + deep-green footer, **no** auth guard); existing screens move under `app/(app)/*`; root `_layout.tsx` → `<Slot>`. Home owns `/`; the health screen moves to `/health`. Renders on Expo **web**; native still builds. | 3a | planned | AC-3a-3, AC-3a-10 |
+| **FR-W2** | **Home / Αρχική is business-first.** Communicates the dog-training **practice** (who we are, the promise, book/contact CTAs). Does **NOT** lead with "an app"/"a data platform"; one bold/proof moment max; **no progress-curve on Home**. | 3a | planned | AC-3a-2 |
+| **FR-W3** | **About / Ποιοι είμαστε.** Practice, method, trainer(s), credentials; "proof not promises" tone; in-code Greek copy. | 3a | planned | AC-3a-3, AC-3a-4 |
+| **FR-W4** | **Services / Υπηρεσίες with tracking-as-a-service.** Services as peers (assessment/private/group ↔ `BOOKING_TYPES`); the data-driven progress-tracking is **ONE** premium service and the **only** place the signature progress-curve appears. | 3a | planned | AC-3a-2 |
+| **FR-W5** | **Results / Αποτελέσματα.** Case studies from clearly-structured in-code placeholder data (`{ dogName, summary, before, after, curveData }[]`); may reuse the progress-curve for an outcome arc. | 3a | planned | AC-3a-3 |
+| **FR-W6** | **Contact / Επικοινωνία.** Address, hours, phone, email (in-code) + a **keyless embedded map** + the **lead form** (`name`, `contact`, optional `message`; page sets `source`) → `POST /leads`; pending/success/error states; visible focus + reduced-motion. | 3a | planned | AC-3a-5 |
+| **FR-W7** | **Booking page.** Form: `type` (`BOOKING_TYPES`), requested date/time → ISO `requestedAt`, contact, optional `notes` → `POST /bookings` (server defaults `status='requested'`); pending/success/error states. | 3a | planned | AC-3a-7 |
+| **FR-W8** | **Signature progress-curve component.** Hand-rolled `react-native-svg` thin gold line on deep-green with soft gradient fill; per-instance gradient id; respects `prefers-reduced-motion`; renders on web; **Services-only** (optionally Results). | 3a | planned | AC-3a-2, AC-3a-8 |
+| **FR-W9** | **Design System theme module.** A single mobile-only `apps/mobile/lib/theme.ts` (DS-1 tokens, DS-2 type scale RN-unit-converted, DS-3 spacing/radii, DS-4 primitives) consumed by all pages + chrome. | 3a | planned | AC-3a-4 |
+| **FR-W10** | **Bilingual labels (Greek-first).** Greek nav labels + page headings; in-code Greek body copy; no runtime language switcher / full i18n. | 3a | planned | AC-3a-3 |
+| **FR-W11** | **SEO best-effort.** `app/+html.tsx` shell (`<html lang="el">`, site defaults, favicon) + per-page `<Head>`; static emission **verified** via `expo export` with a documented graceful fallback (React-19 tags → client-side only). Not a blocker. | 3a | planned | AC-3a-3 |
+
+### API for 3a (PUBLIC capture)
+
+| ID | Requirement | Phase | Status | Maps to AC |
+| --- | --- | --- | --- | --- |
+| **FR-A1·3a** | **`POST /leads` (PUBLIC).** Body `CreateLeadInput` `{ name, contact, source, message? }` (Zod, non-empty + `.max()` caps); `trainerId` via `resolveTrainerId()`; insert `lead` (`status='new'`, `clientId=null`); **then fire-and-forget** Resend notification to the trainer's `email` (stub-not-throw when keyless; **never** blocks/fails the 201); returns `201 LeadDTO`. | 3a | planned | AC-3a-6 |
+| **FR-A2·3a** | **`POST /bookings` (PUBLIC).** Body `CreateBookingInput` `{ type, requestedAt, name, contact, notes? }` (Zod: `type ∈ BOOKING_TYPES`, ISO `requestedAt`); `trainerId` via `resolveTrainerId()`; insert `booking` (`status='requested'`, `leadId=null`, captured name/contact folded into `notes`); returns `201 BookingDTO`. Invalid `type`/`requestedAt` → `400`. | 3a | planned | AC-3a-7 |
+| **FR-A3·3a** | **`resolveTrainerId()` (single-practice).** `PRACTICE_TRAINER_ID` env → else sole/oldest `trainer` row → else **throw → 503** "practice not configured"; never insert empty `trainerId`. New optional `PRACTICE_TRAINER_ID` documented in `.env.example`. Read lazily (not in `config.ts`). | 3a | planned | AC-3a-6, AC-3a-7 |
+| **FR-A4·3a** | **Email service module.** `apps/api/src/lib/email.ts` wraps Resend with the lazy stub-not-throw discipline (mirrors `lib/r2.ts`, inverts missing-key); `RESEND_API_KEY`/`RESEND_FROM` read lazily; SDK lives only in `apps/api`. | 3a | planned | AC-3a-6 |
+| **FR-A5·3a** | **Public-endpoint hardening.** `hono-rate-limiter` per-IP throttle scoped to the two routes (→ `429 { error }`) + Zod input-size caps; no internal leakage; CORS left allow-all in 3a (tightening is 3b). | 3a | planned | AC-3a-9 |
+| **FR-A6·3a** | **Routing/registration.** `routes/leads.ts` + `routes/bookings.ts` as Hono sub-apps mounted via `app.route('/', …)` in `app.ts`; reuse `cors()`/`onError`/`notFound`; ESM `.js` specifiers; `{ error }` bodies. | 3a | planned | AC-3a-1 |
+| **FR-A7·3a** | **Shared DTOs.** Add to `packages/shared/src/dtos.ts` (pure TS, barrel auto-export): `CreateLeadInput`, `LeadDTO`, `CreateBookingInput`, `BookingDTO`. Reuse `BookingType`/`LeadStatus`/`BookingStatus` enums unchanged — **no new enum**. | 3a | planned | AC-3a-1 |
+
+### Phase 3a non-functional requirements
+
+| ID | Requirement |
+| --- | --- |
+| NFR-P3a-1 | Premium quality floor on every page — responsive (web breakpoints via `useWindowDimensions`), **visible focus** states (`Pressable` `focused`), respect **`prefers-reduced-motion`** (`AccessibilityInfo`); subtle motion only. |
+| NFR-P3a-2 | Email is best-effort, insert is source of truth — a failed/stubbed Resend send **never** fails `POST /leads`; the lead row is always persisted and returned (fire-and-forget + `.catch()`). |
+| NFR-P3a-3 | No config fallbacks except the email stub — `RESEND_API_KEY` and `PRACTICE_TRAINER_ID` read lazily (not in `config.ts`); `RESEND_API_KEY` unset → logged stub (the one intentional graceful degradation); no fabricated keys/URLs. |
+| NFR-P3a-4 | `@tailsup/shared` stays pure (Metro-safe) — 3a adds only types to shared; the Resend SDK, `react-native-svg`, fonts, and rate-limiter live only in `apps/api`/`apps/mobile`. |
+| NFR-P3a-5 | One codebase, no second framework — the public site builds from `apps/mobile` (Expo Router web); native must still build and the authed screens keep working. |
+| NFR-P3a-6 | TypeScript strict everywhere — zero errors across shared/api/mobile; the four new DTOs are the single source of truth for the new shapes. |
+| NFR-P3a-7 | Consistency with Phase 1/2 — singular tables; Zod over shared arrays; ESM `.js` specifiers; static `EXPO_PUBLIC_*` dot-access; `{ error }` bodies; **no schema migration** (`git status apps/api/drizzle` stays empty). |
+
+---
+
 ## Data Model (full product schema — implemented in full in Phase 1)
 
 All 12 entities are implemented in Drizzle in Phase 1. **Table names are SINGULAR.** Primary keys are **UUID** (`uuid().defaultRandom()`) across all entities (resolves Open Question #1). Timestamps are `timestamp` with timezone. Column names map to **snake_case** via Drizzle `casing: 'snake_case'`; TS keys stay camelCase.
@@ -146,21 +192,21 @@ All 12 entities are implemented in Drizzle in Phase 1. **Table names are SINGULA
 | `PATCH /events/:id` | none (P2) | 2 | **planned** |
 | `POST /media/presign` | none (P2; client/app from P3) | 2 | **planned** |
 | `POST /events/:id/media` | none (P2) | 2 | **planned** |
-| `POST /leads` | public | 3 | No |
-| `POST /bookings` | public | 3 | No |
-| `PATCH /bookings/:id/status` | trainer | 3 | No |
-| `POST /leads/:id/convert` | trainer | 3 | No |
+| `POST /leads` | public | 3a | **planned** |
+| `POST /bookings` | public | 3a | **planned** |
+| `PATCH /bookings/:id/status` | trainer | 3b | No |
+| `POST /leads/:id/convert` | trainer | 3b | No |
 | `POST /dogs/:id/summary` | trainer | 4 | No |
 
 ---
 
 ## Later-phase functional scope (context only — NOT built now)
 
-> **Phase 2 — Trainer view is no longer "later phase"** — it is in active scope and detailed above as FR-M1..FR-M8 + FR-A1..FR-A12 (plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`).
+> **Phase 2 — Trainer view** shipped (FR-M1..FR-M8 + FR-A1..FR-A12; plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`). **Phase 3a — Public site + capture is now in active scope** and detailed above as FR-W1..FR-W11 + FR-A1·3a..FR-A7·3a (plan: `docs/design/plan-003-tailsup-phase3a-public-site.md`).
 
-- **Phase 3 — Public site + Client view:** website pages (Home, About, Services, Results, Contact + lead form, Booking) with the Design System; BetterAuth with `trainer`/`client` roles; client dashboard (threshold-over-time graph, homework, reminders); trainer lead/booking management; `POST /leads`, `POST /bookings`, `PATCH /bookings/:id/status`, `POST /leads/:id/convert`.
+- **Phase 3b — App auth + dashboards (NOT this cycle):** BetterAuth with `trainer`/`client` roles; `/login` + auth guards; CORS tightening; replace `EXPO_PUBLIC_TRAINER_ID`; client dashboard (threshold-over-time graph, homework, reminders); trainer lead/booking management; `PATCH /bookings/:id/status`, `POST /leads/:id/convert`, trainer/client read endpoints.
 - **Phase 4 — AI & scale:** `POST /dogs/:id/summary` (Anthropic `claude-haiku-4-5`); AI spend-cap reminder; multi-tenant SaaS prep.
 
 ---
 
-_Phase 1 implementation plan: `docs/design/plan-001-tailsup-phase1-foundations.md` · Phase 2 implementation plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md`._
+_Phase 1 implementation plan: `docs/design/plan-001-tailsup-phase1-foundations.md` · Phase 2 implementation plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md` · Phase 3a implementation plan: `docs/design/plan-003-tailsup-phase3a-public-site.md`._

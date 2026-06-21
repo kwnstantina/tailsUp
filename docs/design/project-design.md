@@ -1398,3 +1398,552 @@ npm run web -w apps/mobile     # dog list -> start session -> 4-tap log (resets)
 ---
 
 _Phase 2 plan: `docs/design/plan-002-tailsup-phase2-trainer-view.md` · Refined spec: `docs/reference/refined-request-phase2.md` · Investigation: `docs/reference/investigation-phase2.md` · Codebase scan: `docs/reference/codebase-scan-phase2.md` · Phase 1 design: this document (above)._
+
+---
+---
+
+# Phase 3a — Public Site
+
+> **Status:** Design for review at the **design gate**. This section **extends** the Phase 1 + Phase 2 design above — it does **not** rewrite them. Everything earlier (the 12-table schema, `GET /health`, `POST /sessions/:id/events`, the trainer read/media endpoints, the four trainer screens, the `@tailsup/shared` enums/DTOs) stays exactly as built and keeps working unchanged (AC-3a-10).
+>
+> **Build scope: Phase 3a ONLY** — the six public website pages (Home, About, Services, Results, Contact, Booking) rendered with the Design System on Expo **web** (the primary verification surface), plus the two **public, unauthenticated** capture endpoints `POST /leads` (with a best-effort Resend email stub) and `POST /bookings`. **NO schema migration** (the `lead`/`booking` tables already exist). **EXCLUDED — Phase 3b/4:** BetterAuth, `/login`, auth guards, client/trainer dashboards, `PATCH /bookings/:id/status`, `POST /leads/:id/convert`, the `EXPO_PUBLIC_TRAINER_ID` replacement, CORS tightening, the Anthropic summary endpoint, multi-tenant prep.
+>
+> **Inputs (authoritative):** `docs/design/plan-003-tailsup-phase3a-public-site.md` (Units A / B / C1 / C2, file-ownership map, gate D-1..D-9, risks) · `docs/reference/refined-request-phase3.md` (3a scope, FR-W1..W10, FR-A1..A3, DS-1..DS-7, AC-3a-1..AC-3a-10) · `docs/reference/investigation-phase3a.md` (the HOW + version pins + pitfalls) · `docs/research/expo-router-static-head-sdk54.md` (the `<Head>` SEO pattern + verify-and-fallback) · `prompts/001-tailsup-kickoff.md` (the authoritative Design System + "The Website") · **`design_system.md`** (the operationalized DS reference at the repo root — the source coders apply).
+>
+> **Purpose:** Give the four coder agents (Units A / B / C1 / C2) enough precision to implement on **disjoint file sets** without re-reading each other's code or re-deciding settled questions. Every new DTO, route shape, status code, exported symbol, page outline, and decision is specified below.
+>
+> **Business-first constraint (hard — AC-3a-2 / DS-7):** the homepage is about the **practice**, not "an app" or "a data platform." The data-tracking platform is **one premium service** under Services, and the **signature progress-curve appears ONLY in that Services section** (optionally reused on Results). Spend boldness in one place.
+
+---
+
+## P3a.0 Ground truth (verified against the live code — do not re-derive)
+
+- **`apps/api/src/app.ts`** builds the Hono app, applies `app.use('*', cors())` (allow-all — **leave as-is for 3a**; the comment already flags 3b tightening), mounts route sub-apps via `app.route('/', …)` (`health`, `sessions`, `dogs`, `events`, `media`), and installs `onError` (HTTPException pass-through + `500 { error: 'internal server error' }`) and `notFound` (`404 { error: 'not found' }`). **Mount the two new sub-apps here.**
+- **`apps/api/src/routes/sessions.ts`** is the canonical route template: `export const sessions = new Hono()`, `zValidator('json', zObj)`, `z.enum(SHARED_ARRAY)`, `db.select()/insert().returning()`, ESM **`.js`** import specifiers, `{ error }` JSON on domain failures, `c.json(dto, 201)`, `.toISOString()` on timestamps.
+- **`apps/api/src/lib/r2.ts`** is the lazy-config template: `requiredR2()` reads creds at **call time** and **throws** (mapped → 503). `lib/email.ts` mirrors this shape **but inverts the missing-key behavior**: on missing `RESEND_API_KEY` it **logs a stub and returns success** (never throws, never blocks the 201).
+- **`apps/api/src/config.ts`** `required()` throws at import time; `PORT` is the only optional. **Do NOT add `RESEND_API_KEY` or `PRACTICE_TRAINER_ID` to `config.ts`** — both are read lazily.
+- **`apps/api/src/db/schema.ts`** — `lead` and `booking` tables already exist with the exact columns documented in §2.2 (Phase 1). **No migration.** `trainer` has `id, name, email` (`email` is the lead-notification recipient).
+- **`packages/shared/src/dtos.ts`** (plural) opens with `import type { TriggerType, Outcome, MediaType } from './enums';`. Barrel `index.ts` is `export * from './enums'; export * from './dtos';` — **new DTOs auto-export, no barrel edit needed.** `BOOKING_TYPES`/`BookingType`, `LEAD_STATUSES`/`LeadStatus`, `BOOKING_STATUSES`/`BookingStatus` already exist and are reused **unchanged**.
+- **`apps/mobile/lib/api.ts`** is the typed fetch client (`request<T>`, `ApiError`, `JSON_HEADERS`, `API_URL`, `TRAINER_ID` stop-gap). **Extend it** with `createLead`/`createBooking`. `TRAINER_ID` stays untouched in 3a.
+- **`apps/mobile/app/`** currently: `_layout.tsx` (single `<Stack>` in `SafeAreaProvider`) + `index.tsx` (health screen, has a `Link href="/dogs"` and the documented Metro fallback in lines 9–33) + `dogs/index.tsx`, `dogs/[id]/timeline.tsx`, `sessions/[id]/log.tsx`, `events/[id].tsx`. **No theme module, no fonts, no SVG, no web pages exist yet.**
+- **`apps/mobile/app.json`** already has `web.bundler: metro`, **`web.output: "static"`**, `experiments.typedRoutes: true`, `newArchEnabled: true`. **No `app.json` change needed for 3a.**
+- **Version pins** (install via `npx expo install` for mobile so SDK-54-compatible versions lock): `expo-font@~14.0.12`, `@expo-google-fonts/fraunces` (400/500), `@expo-google-fonts/inter` (400), `react-native-svg@15.12.1`. API: `resend@^6.13.0`, `hono-rate-limiter` (plain `npm i -w apps/api`).
+- API test runner is **vitest** (133 tests pass as of Phase 2); pattern: `vi.hoisted()` → `vi.mock('../db/client.js')` + `vi.mock('dotenv/config')` → seed env → exercise via `app.request()`. **No mobile test runner exists** (3a adds none).
+
+---
+
+## P3a.1 Route architecture
+
+Phase 3a resolves the central question (LBD-2 / D-1): the public site and the existing authed-ish app coexist in ONE Expo Router tree via **route groups**. Parenthesized directories add **no URL segment** (`app/(site)/about.tsx` → `/about`).
+
+### P3a.1.1 The tree (after the restructure)
+
+```
+apps/mobile/app/
+  _layout.tsx              // REWRITE: SafeAreaProvider + <StatusBar/> + <Slot/>  (drop the <Stack>)
+  +html.tsx                // NEW: web-only HTML shell — <html lang="el">, charset/viewport, fallback <title>/<meta>, favicon, ScrollViewStyleReset
+  (site)/                  // PUBLIC group — Design-System chrome, NO auth guard
+    _layout.tsx            // NEW: SiteChrome (sticky nav + footer) + useFonts() + <Head> site defaults; <Stack screenOptions={{headerShown:false}}> (or <Slot/>)
+    index.tsx              // /          Αρχική (Home)            — business-first; NO progress-curve
+    about.tsx              // /about     Ποιοι είμαστε (About)
+    services.tsx           // /services  Υπηρεσίες (Services)     — the ONLY page with ProgressCurve
+    results.tsx            // /results   Αποτελέσματα (Results)   — placeholder case studies (+ optional curve)
+    contact.tsx            // /contact   Επικοινωνία (Contact)    — address/hours/phone/email + map + lead form
+    booking.tsx            // /booking   Booking                  — appointment-request form
+  (app)/                   // EXISTING screens MOVED here — keeps its dark <Stack> header; NO auth guard in 3a
+    _layout.tsx            // NEW: the existing dark <Stack> (headerStyle #0f172a, the screen titles) MOVED from old root
+    health.tsx             // MOVED from app/index.tsx -> /health  (resolves the double-index-at-/ collision)
+    dogs/index.tsx         // MOVED verbatim — /dogs
+    dogs/[id]/timeline.tsx // MOVED verbatim — /dogs/[id]/timeline
+    sessions/[id]/log.tsx  // MOVED verbatim — /sessions/[id]/log
+    events/[id].tsx        // MOVED verbatim — /events/[id]
+```
+
+### P3a.1.2 The `/` collision and the health move (D-1)
+
+Today `app/index.tsx` (the health screen) owns `/`. In 3a the marketing **Home owns `/`** (`(site)/index.tsx`). Two routes cannot both resolve to `/`, so the health screen **moves to `(app)/health.tsx` → `/health`** (matching the kickoff's "`/health` stays reachable"). The one `Link href="/dogs"` inside the health screen keeps working — the route **name** is unchanged by the group wrapper (`/dogs` resolves to `(app)/dogs/index.tsx`). No other in-app link changes.
+
+**Resulting web URLs:** `/`→Home, `/about`, `/services`, `/results`, `/contact`, `/booking`; `/health`, `/dogs`, `/dogs/[id]/timeline`, `/sessions/[id]/log`, `/events/[id]` (the last four unchanged in behavior).
+
+### P3a.1.3 Root `_layout.tsx` → `<Slot>`
+
+The root layout drops its `<Stack>` and becomes the minimal shell, delegating all chrome to the two groups:
+
+```tsx
+// apps/mobile/app/_layout.tsx  (rewrite)
+import { Slot } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="auto" />
+      <Slot />
+    </SafeAreaProvider>
+  );
+}
+```
+
+The `(app)/_layout.tsx` holds the dark `<Stack>` moved from the old root (`headerStyle #0f172a`, `headerTintColor #fff`, the existing `Stack.Screen` titles **plus** a `name="health"` title). The `(site)/_layout.tsx` renders the Design-System chrome (P3a.3.7).
+
+### P3a.1.4 Static web URLs + the `<Head>` SEO pattern (D-6)
+
+`web.output: "static"` is already on, so `npx expo export --platform web` emits one static HTML file per route — real SEO for a marketing site. Route groups flatten in the export: `(site)/about.tsx` → `dist/about.html` → `/about`. Expected `dist/`: `index.html`, `about.html`, `services.html`, `results.html`, `contact.html`, `booking.html`, plus `_expo/static/*` and `favicon.ico`.
+
+**Per-page head** uses `import Head from 'expo-router/head'`:
+- `app/+html.tsx` is the web-only Node shell: `<html lang="el">`, `<meta charset>`/viewport, a **fallback** site `<title>` + `<meta name="description">` (Greek), `<link rel="icon" href="/favicon.ico">`, and `<ScrollViewStyleReset/>` from `expo-router/html`. `<html lang>`/favicon **must** live here (not in `<Head>`).
+- `(site)/_layout.tsx` renders a `<Head>` with the **site-wide default** title/description + OG defaults; each page renders its own `<Head>` to override `<title>`/`<meta name="description">` (deepest-wins merge). Per-page titles per the research §5d table (e.g. Home `TailsUp — Επαγγελματική Εκπαίδευση Σκύλων`, About `Ποιοι Είμαστε — TailsUp`, …).
+
+**Verify-and-fallback (best-effort, NOT a build blocker):** after wiring `<Head>`, run `npx expo export --platform web` and grep the exported HTML for the per-page `<title>` (`Get-Content apps/mobile/dist/about.html | Select-String "<title>|<meta name"`).
+1. **Tags present** → static head works on SDK 54; done.
+2. **Tags absent** → **Option A (primary fallback):** replace `<Head>` with bare **React 19** `<title>`/`<meta>` tags, **web-guarded** (`Platform.OS === 'web'` or a `.web.tsx` split, since bare `<title>` errors on native), and re-export/grep. React 19.1 natively hoists `<title>`/`<meta>`/`<link>` into `<head>` during static render.
+3. **Still absent** → **Option C (lowest effort):** keep the site-wide default in `+html.tsx` (always statically emitted) and accept client-side-only per-page head. The pages still render; only the initial crawl sees a generic title — a minor SEO cost, acceptable for the 3a demo.
+
+(Option B — a `__EXPO_ROUTER_PATHNAME` page-map in `+html.tsx` — is documented in the research but **skipped** by default: the env var is an undocumented internal and may not populate.)
+
+---
+
+## P3a.2 Theme module — `apps/mobile/lib/theme.ts`
+
+Plain TS, **mobile-only** (NOT in `@tailsup/shared` — it has no place in the wire contract and would never be imported by the API). It encodes DS-1..DS-4 with RN-unit conversions (letterSpacing in **points** = `em × fontSize`; lineHeight in **px** ≈ `1.6 × fontSize`). The exhaustive token table + conversion math lives in `design_system.md`; the exported shape is:
+
+```ts
+// apps/mobile/lib/theme.ts
+export const colors = {
+  bg: '#FAF7F0', bgAlt: '#F0EADD', surface: '#FFFFFF',
+  primary: '#1B3A32', primarySoft: '#3D5249',
+  accent: '#B07D48', accentSoft: '#E8C9A0', mint: '#9FC4B5',
+  text: '#1B3A32', textMuted: '#6B7D74', border: 'rgba(27,58,50,0.12)',
+} as const;
+
+export const fonts = {
+  display: 'Fraunces_500Medium', displayRegular: 'Fraunces_400Regular',
+  body: 'Inter_400Regular',
+} as const;
+
+export const type = {
+  h1:      { fontFamily: fonts.display,        fontSize: 46,   lineHeight: 52, letterSpacing: -0.92 },
+  h2:      { fontFamily: fonts.display,        fontSize: 30,   lineHeight: 36, letterSpacing: -0.6 },
+  h3:      { fontFamily: fonts.displayRegular, fontSize: 19,   lineHeight: 26 },
+  bodyLg:  { fontFamily: fonts.body,           fontSize: 16,   lineHeight: 26 },
+  body:    { fontFamily: fonts.body,           fontSize: 15,   lineHeight: 24 },
+  eyebrow: { fontFamily: fonts.body,           fontSize: 12.5, letterSpacing: 2, textTransform: 'uppercase' as const, color: colors.accent },
+  caption: { fontFamily: fonts.body,           fontSize: 11.5, lineHeight: 16, color: colors.textMuted },
+} as const;
+
+export const space  = { xs: 8, sm: 16, md: 24, lg: 32, xl: 54, xxl: 80 } as const;
+export const radii  = { base: 6, lg: 14 } as const;
+export const layout = { maxWidth: 1080, maxProse: 720 } as const;
+export const breakpoints = { sm: 640, md: 768, lg: 1024 } as const;
+```
+
+**Helpers (C1 exports):**
+- **`useBreakpoint(): 'sm' | 'md' | 'lg'`** — over `useWindowDimensions().width` against `breakpoints` (RN has no CSS `@media`). Pages switch column→row and adjust `space`/`fontSize` by this. (May live in `theme.ts` or a sibling `lib/responsive.ts`.)
+- **`useReducedMotion(): boolean`** (`apps/mobile/lib/reducedMotion.ts`) — wraps `AccessibilityInfo.isReduceMotionEnabled()` + `addEventListener('reduceMotionChanged', …)`; on web RNW maps this to the `(prefers-reduced-motion: reduce)` media query, so one RN API covers both targets. Consumed by `ProgressCurve` and any animated chrome.
+
+**Web-only style escape hatch:** a few web properties (sticky/`fixed` header, `cursor`, `outline`, CSS `transition`) are not in RN's type surface — apply them narrowly via `Platform.select({ web: { …webOnly } as any })`, localized to the component (never global). The 0.5px card border uses `borderWidth` (portable), **not** a shadow.
+
+**Fallbacks (quality floor):** set web family fallbacks (`Georgia` for display, `system-ui` for body) via `Platform.select` and rely on `FontDisplay.SWAP` so the site never blocks on font load on web (brief FOUT acceptable); native splash-gates briefly.
+
+---
+
+## P3a.3 UI primitive components (C1 exports for C2)
+
+All under `apps/mobile/components/` consuming `theme.ts`. Each interactive primitive styles `Pressable`'s `({ hovered, focused, pressed })` callback — `focused` is the portable **visible-focus** mechanism (quality floor); `hovered` is mouse-only on web (inert on native, safe). Exact visual specs are in `design_system.md` §4; the API/props are below.
+
+### P3a.3.1 `PrimaryButton` / `SecondaryButton` — `components/ui/`
+```ts
+interface ButtonProps {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;        // shows ActivityIndicator, blocks onPress
+}
+```
+- `PrimaryButton`: `colors.primary` bg → `primarySoft` on hover/press; off-white (`colors.bg`) text; `radii.base` (6); padding **13/28**; copper focus ring; `Platform.select` `cursor:'pointer'` (web).
+- `SecondaryButton`: transparent, **1px** border (`colors.primary`), `colors.primary` text; same radius/padding/focus contract.
+
+### P3a.3.2 `Eyebrow` — `components/ui/`
+```ts
+interface EyebrowProps { children: React.ReactNode }
+```
+`type.eyebrow` (copper, uppercase, `letterSpacing 2`); `marginBottom space.xs`. Copper used here as a small detail (compliant with "copper only on small details").
+
+### P3a.3.3 `Card` — `components/ui/`
+```ts
+interface CardProps { children: React.ReactNode; style?: StyleProp<ViewStyle> }
+```
+`colors.surface` bg; **0.5px** `colors.border` (via `borderWidth`); `radii.lg` (14); padding `space.md`. No shadow by default.
+
+### P3a.3.4 `Section` + `Container` — `components/ui/`
+```ts
+interface SectionProps { children: React.ReactNode; alt?: boolean; dark?: boolean; maxWidth?: number }
+interface ContainerProps { children: React.ReactNode; maxWidth?: number }
+```
+- `Section`: full-bleed vertical rhythm wrapper; vertical padding `space.xl`→`space.xxl` by breakpoint; `alt` → `bgAlt` bg; `dark` → `colors.primary` bg (the ProofBand surface). Wraps a `Container`.
+- `Container`: centered column — `width '100%'`, `maxWidth layout.maxWidth` (or the passed `maxProse`), `alignSelf 'center'`, horizontal padding `space.md`.
+
+### P3a.3.5 `ProofBand` — `components/ui/`
+```ts
+interface ProofBandProps { children: React.ReactNode }
+```
+The dark deep-green band — **at most one per page** (DS-4 / DS-6 "spend boldness in one place"). Implemented as `<Section dark>` semantics; off-white text; holds a proof statement / key stat / strong CTA, never decoration.
+
+### P3a.3.6 `ProgressCurve` — `components/ProgressCurve.tsx`
+```ts
+interface ProgressCurveProps {
+  points: { occurredAt: string; thresholdMeters: number }[] | { x: number; y: number }[];
+  height?: number;          // default e.g. 220
+}
+```
+Hand-rolled `react-native-svg` (no charting dep). Deep-green (`colors.primary`) panel, `radii.lg`. `<Defs><LinearGradient id={useId()} x1=0 y1=0 x2=0 y2=1>` gold→transparent (Stop 0 ~0.28 opacity → Stop 1 = 0). A **closed** `<Path fill="url(#id)">` (gradient fill) + a **stroke-only** `<Path fill="none" stroke={gold} strokeWidth={2} strokeLinecap="round">` (thin gold line; gold = `colors.accent`/`accentSoft`). Catmull-Rom→Bézier smoothing. **Per-instance gradient id via `useId()`** (R: two curves on one page would otherwise share the first `<LinearGradient>`). Explicit numeric `width`/`height` (measure container / `useWindowDimensions`; % sizing collapses on web). Guard `min === max` (flat line). Static curve is acceptable; any draw-on animation gated on `useReducedMotion()`. **Services-only** (optionally Results).
+
+### P3a.3.7 `SiteChrome` — `components/SiteChrome.tsx` (or folded into `(site)/_layout.tsx`)
+Header/nav + footer, no props. Sticky header on web via `Platform.select({ web: { position: 'sticky', top: 0 } as any })`. Greek nav links (`Link`) to all six routes: Αρχική `/`, Ποιοι είμαστε `/about`, Υπηρεσίες `/services`, Αποτελέσματα `/results`, Επικοινωνία `/contact`, and a primary "Κλείσε αξιολόγηση"-style CTA to `/booking`. Deep-green (`colors.primary`) footer with the practice name + contact stub. Visible focus on nav links via `Pressable` `focused`.
+
+### P3a.3.8 `PracticeMap` — `.web.tsx` / `.native.tsx` (D-3)
+Exported as `PracticeMap` (Metro picks the file per target). No props required (coords in-code per D-9) or `{ lat, lon, label }`.
+- `PracticeMap.web.tsx`: a plain JSX `<iframe loading="lazy">` pointing at OpenStreetMap `https://www.openstreetmap.org/export/embed.html?bbox=…&layer=mapnik&marker=${lat},${lon}` — **no API key**. `style={{ border:0, width:'100%', height:320, borderRadius:14 }}`.
+- `PracticeMap.native.tsx`: a `Card` + `Pressable` → `Linking.openURL('https://www.openstreetmap.org/?mlat=…&mlon=…#map=16/…')` ("Open in Maps"). **No `<iframe>` JSX in the native file** (RN rejects the unknown element).
+
+### P3a.3.9 `lib/api.ts` additions (C1)
+Append, following the existing `request<T>` + `JSON_HEADERS` pattern (import the two new DTOs into the existing `import type` block; leave `TRAINER_ID` untouched):
+```ts
+export function createLead(body: CreateLeadInput): Promise<LeadDTO> {
+  return request<LeadDTO>('/leads', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+}
+export function createBooking(body: CreateBookingInput): Promise<BookingDTO> {
+  return request<BookingDTO>('/bookings', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+}
+```
+
+---
+
+## P3a.4 The six pages — IA + content outline (Unit C2)
+
+Greek-first content (D-4 default — Greek nav labels + Greek headings + Greek in-code body copy; no runtime switcher, no full i18n). **Bilingual Greek+English is an option** (D-4 veto) — it roughly doubles every page's copy and needs a toggle; flagged as the main content decision. Every page: `Section`/`Container` rhythm, the type scale, **≤ 1 `ProofBand`/bold moment**, generous whitespace, copper only on small details, responsive column→row via `useBreakpoint`, and a per-page `<Head>`.
+
+### P3a.4.1 Home — `(site)/index.tsx` → `/` (Αρχική)
+**Business-first (DS-7 / AC-3a-2): about the PRACTICE, not the app.** **No `ProgressCurve` on Home.**
+- **Hero:** `Eyebrow` + H1 headline promise (calm, expert, trustworthy dog training) + a short sub-line. Primary CTA **`PrimaryButton` "Κλείσε αξιολόγηση"** → `/booking`; `SecondaryButton` "Επικοινωνία" → `/contact`.
+- **Value/method strip:** 3 `Card`s — the practice's calm/precise/proof-driven approach (no hype).
+- **Exactly one bold moment:** a single `ProofBand` (a proof statement or key outcome) — the page's only dark band.
+- **Services teaser:** a short row linking into `/services`; the data-tracking platform appears here at most as a one-line teaser ("μετρήσιμη πρόοδος") that links into Services — **never the hero**.
+- Primitives: `Eyebrow`, `Section`, `Card`, `PrimaryButton`, `SecondaryButton`, `ProofBand` (×1).
+
+### P3a.4.2 About — `(site)/about.tsx` → `/about` (Ποιοι είμαστε)
+- **Intro:** `Eyebrow` + H2; the practice, its philosophy. "Proof not promises" tone.
+- **Method:** prose at `maxProse` (720) — the training method, why structured/longitudinal.
+- **Trainer(s) / credentials:** `Card`(s) — name, approach, credentials.
+- Greek body copy (D-4). Optional single `ProofBand`. Primitives: `Eyebrow`, `Section`, `Card`.
+
+### P3a.4.3 Services — `(site)/services.tsx` → `/services` (Υπηρεσίες)
+**The ONLY page with `ProgressCurve`.**
+- **Service catalogue as peers:** `Card` per service mapping to `BOOKING_TYPES` — Αξιολόγηση (`assessment`), Ιδιαίτερα (`private`), Ομαδικά (`group`). Each may carry a "Κλείσε ραντεβού" link to `/booking` (per-service `type` prefill is a nice-to-have, not required).
+- **The data-driven premium service:** a distinct section framing structured behavior tracking as **one premium service** (not the hero), with **`ProgressCurve`** (sample/placeholder data) as proof of method — thin gold line on deep green. This is the page's bold moment.
+- Primitives: `Eyebrow`, `Section`, `Card`, `ProgressCurve`, `PrimaryButton`/`SecondaryButton`.
+
+### P3a.4.4 Results — `(site)/results.tsx` → `/results` (Αποτελέσματα)
+- Renders from an **in-code placeholder array** (D-5), clearly structured so real case studies replace it with no layout change:
+  ```ts
+  const CASES: { dogName: string; summary: string; before: string; after: string; curveData: { occurredAt: string; thresholdMeters: number }[] }[] = [ /* tasteful placeholders */ ];
+  ```
+- A `Card` per case (dog, summary, before→after). **May reuse `ProgressCurve`** for an outcome arc per case. Clearly placeholder — **no fabricated testimonials**.
+- Primitives: `Eyebrow`, `Section`, `Card`, optional `ProgressCurve`.
+
+### P3a.4.5 Contact — `(site)/contact.tsx` → `/contact` (Επικοινωνία)
+- **Practice details (in-code, D-9):** address, opening hours, phone, email — in `Card`(s).
+- **Map:** `<PracticeMap/>` (keyless OSM iframe on web; card+Linking on native).
+- **Lead form** → `POST /leads`: fields `name`, `contact` (email/phone), optional `message`; the page sets `source: 'website-contact'`. Submit → `createLead(...)`; a discriminated-union `Status` (`idle`/`pending`/`success`/`error`) mirroring the Phase 1 health screen; on success confirm receipt; on error surface the `ApiError` message. Visible focus on inputs; `prefers-reduced-motion` respected.
+- Primitives: `Eyebrow`, `Section`, `Card`, `PracticeMap`, `PrimaryButton`.
+
+### P3a.4.6 Booking — `(site)/booking.tsx` → `/booking`
+- **Appointment-request form** → `POST /bookings`: `type` selector (`assessment`/`private`/`group` from `BOOKING_TYPES`), a requested date/time → ISO `requestedAt`, `name`, `contact`, optional `notes`. Submit → `createBooking(...)`; same `Status` union; on success confirm the practice will respond.
+- Primitives: `Eyebrow`, `Section`, `Card`, `PrimaryButton`.
+
+---
+
+## P3a.5 API contracts (Unit B)
+
+Both endpoints are **PUBLIC / unauthenticated**, follow the `sessions.ts` template, mount in `app.ts` via `app.route('/', leads)` / `app.route('/', bookings)`, and return `{ error: string }` on failure (no internal leakage). `cors()` stays allow-all (3b tightens it).
+
+### P3a.5.1 `POST /leads` (PUBLIC) → `201 LeadDTO`
+**Body** `CreateLeadInput`. **Zod** (length caps satisfy FR-A3 input-size limits):
+```ts
+const createLead = z.object({
+  name:    z.string().min(1).max(200),
+  contact: z.string().min(1).max(200),
+  source:  z.string().min(1).max(100),
+  message: z.string().max(2000).optional(),
+});
+```
+**Flow:** validate → `const trainerId = await resolveTrainerId()` (catch → 503) → `db.insert(lead).values({ name, contact, source, message: body.message ?? null, trainerId /* status DB-default 'new', clientId DB-default null */ }).returning()` → map to `LeadDTO` (`createdAt.toISOString()`) → `const to = await getTrainerEmail(trainerId)` → **fire-and-forget** `void sendLeadNotification(to, dto).catch((e) => console.error('[email] send failed (non-fatal)', e))` (NEVER awaited) → `c.json(dto, 201)`.
+
+| Status | When | Body |
+| --- | --- | --- |
+| 201 | valid | `LeadDTO` (`status:'new'`, `clientId:null`) |
+| 400 | zod validation failure | zValidator default JSON error body |
+| 503 | `resolveTrainerId()` throws (no practice trainer) | `{ error: 'practice not configured' }` |
+| 429 | rate-limited | `{ error: 'too many requests' }` |
+
+### P3a.5.2 `POST /bookings` (PUBLIC) → `201 BookingDTO`
+**Body** `CreateBookingInput`. **Zod:**
+```ts
+const createBooking = z.object({
+  type:        z.enum(BOOKING_TYPES),
+  requestedAt: z.string().datetime(),   // ISO; → new Date(...) on insert
+  name:        z.string().min(1).max(200),
+  contact:     z.string().min(1).max(200),
+  notes:       z.string().max(2000).optional(),
+});
+```
+**Name/contact folding (D-7 + interface-contract note):** the `booking` table has **no** `name`/`contact` columns. They are validated for follow-up context and **prepended into `notes`** so they are not lost: `notes = \`[${name} · ${contact}] ${body.notes ?? ''}\`.trim()`. `leadId` stays **null** (no auto-created lead in 3a).
+**Flow:** validate → `resolveTrainerId()` (→ 503) → `db.insert(booking).values({ type, requestedAt: new Date(body.requestedAt), trainerId, leadId: null, clientId: null, notes /* status DB-default 'requested' */ }).returning()` → map to `BookingDTO` (`requestedAt`/`createdAt` `.toISOString()`) → `c.json(dto, 201)`.
+
+| Status | When | Body |
+| --- | --- | --- |
+| 201 | valid | `BookingDTO` (`status:'requested'`, `leadId:null`) |
+| 400 | bad `type` or non-ISO `requestedAt` (or other zod failure) | zValidator default JSON error body |
+| 503 | no practice trainer | `{ error: 'practice not configured' }` |
+| 429 | rate-limited | `{ error: 'too many requests' }` |
+
+### P3a.5.3 `resolveTrainerId()` + `getTrainerEmail()` — `apps/api/src/lib/trainer.ts` (D-2)
+```ts
+// resolveTrainerId(): read PRACTICE_TRAINER_ID at CALL TIME (NOT in config.ts).
+//   - set & non-empty  -> return it.
+//   - else SELECT id FROM trainer ORDER BY createdAt ASC LIMIT 1 (else by id) -> if a row, return its id.
+//   - else THROW (clear message) -> route maps to 503 { error: 'practice not configured' }.
+// NEVER insert a fabricated/empty trainerId (the NOT-NULL FK would 500).
+// getTrainerEmail(id): SELECT trainer.email -> string | null (the lead-notification recipient).
+```
+`PRACTICE_TRAINER_ID` is read lazily here, **not** added to `config.ts` (mirrors the R2 lazy discipline). Documented in `.env.example` as optional ("defaults to the single seeded trainer; set to pin the practice trainer for public leads/bookings").
+
+### P3a.5.4 Rate limiting (D-8)
+`hono-rate-limiter` in-memory limiter scoped to the two POST paths (generous per-IP window, e.g. ~10/min), keyed by `c.req.header('x-forwarded-for')` → connecting IP, returning `429 { error: 'too many requests' }`. **Plus** the Zod `.max()` caps (independently required). Optional note: production should add an edge limiter (in-memory resets on restart / isn't shared across instances — fine for a single scale-to-zero Railway instance and local acceptance). If the dependency is unwanted (D-8 veto) → Zod caps only + a documented edge-limiter note.
+
+---
+
+## P3a.6 `lib/email.ts` design (Unit B)
+
+Mirrors `lib/r2.ts`'s lazy-config shape **but inverts the missing-key behavior**: R2 throws (→503); email **logs a stub and returns success** when keyless (kickoff "stub if no key"; NFR-9 insert-is-source-of-truth). The Resend SDK lives **only** in `apps/api` (NFR-6).
+
+```ts
+// apps/api/src/lib/email.ts
+import { Resend } from 'resend';
+import type { LeadDTO } from '@tailsup/shared';
+
+let client: Resend | null = null;
+function getClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY;          // lazy read — NOT in config.ts
+  if (!key || key.trim() === '') return null;      // STUB path — NO throw
+  client ??= new Resend(key);
+  return client;
+}
+
+export async function sendLeadNotification(to: string | null, lead: LeadDTO): Promise<void> {
+  const c = getClient();
+  if (!c || !to) {
+    console.log('[email:stub] new lead', { to, id: lead.id, name: lead.name, contact: lead.contact, source: lead.source });
+    return;                                         // stub: no key OR no recipient -> log + no-op
+  }
+  const { error } = await c.emails.send({          // resolves { data, error }; does NOT throw on API errors
+    from: process.env.RESEND_FROM ?? 'TailsUp <onboarding@resend.dev>',
+    to,
+    subject: `New lead: ${lead.name}`,
+    html: `<p>New lead from ${lead.source}</p><p>${lead.name} — ${lead.contact}</p><p>${lead.message ?? ''}</p>`,
+  });
+  if (error) console.error('[email] resend error (non-fatal)', error);
+}
+```
+**Critical invariants:** (1) `RESEND_API_KEY` stays **out of `config.ts`** (read lazily). (2) The route **never awaits** `sendLeadNotification` before the 201 — awaiting couples request latency to Resend and risks a 5xx. (3) The un-awaited promise always gets a `.catch()` (an unhandled rejection on a network/DNS failure could crash Node). (4) `RESEND_FROM` documented in `.env.example` (optional; needs a Resend-verified domain in production; `onboarding@resend.dev` for dev).
+
+---
+
+## P3a.7 New `@tailsup/shared` DTOs (Unit A — LANDS FIRST)
+
+**File:** `packages/shared/src/dtos.ts` (APPEND below the Phase 2 DTOs; do not modify existing ones). **Pure TS** — reuse the existing enum unions. Add `BookingType, LeadStatus, BookingStatus` to the existing `import type { TriggerType, Outcome, MediaType } from './enums';` line. **No new enum** is needed for 3a (`ROLES` is a 3b concern). The barrel auto-exports (no `index.ts` edit).
+
+```ts
+// add to the existing import: BookingType, LeadStatus, BookingStatus from './enums'
+
+// POST /leads request body (PUBLIC). `source` is set by the page (e.g. 'website-contact').
+export interface CreateLeadInput {
+  name: string;
+  contact: string;        // free-text email or phone
+  source: string;
+  message?: string;
+}
+
+// POST /leads response — mirrors the `lead` row (createdAt as ISO string).
+export interface LeadDTO {
+  id: string;
+  trainerId: string;
+  name: string;
+  contact: string;
+  source: string;
+  message: string | null;
+  status: LeadStatus;     // always 'new' on create
+  clientId: string | null;// always null on create
+  createdAt: string;      // ISO
+}
+
+// POST /bookings request body (PUBLIC). type ∈ BOOKING_TYPES; requestedAt ISO.
+// name/contact captured for follow-up; folded into `notes` on insert (no columns exist); leadId stays null in 3a (D-7).
+export interface CreateBookingInput {
+  type: BookingType;
+  requestedAt: string;    // ISO datetime
+  name: string;
+  contact: string;
+  notes?: string;
+}
+
+// POST /bookings response — mirrors the `booking` row (requestedAt/createdAt as ISO).
+export interface BookingDTO {
+  id: string;
+  trainerId: string;
+  leadId: string | null;
+  clientId: string | null;
+  type: BookingType;
+  requestedAt: string;    // ISO
+  status: BookingStatus;  // always 'requested' on create
+  notes: string | null;
+  createdAt: string;      // ISO
+}
+```
+
+**Purity gate (NFR-6):** `git grep -nE "drizzle|from 'pg'|aws|resend|better-auth|node:" packages/shared/src` returns nothing.
+
+---
+
+## P3a.8 Error-handling strategy
+
+Consistent with the Phase 1/2 discipline: **no config fallbacks** except the deliberate email stub.
+- **Validation → 400.** `@hono/zod-validator` returns 400 with its structured body on any malformed input (`.min()`/`.max()` caps, bad `type` enum, non-ISO `requestedAt`).
+- **`resolveTrainerId()` throw → 503** `{ error: 'practice not configured' }` — never insert a fabricated/empty `trainerId` (the NOT-NULL FK would 500). The route catches the throw and maps it.
+- **Email stub (the ONE intentional graceful degradation):** missing `RESEND_API_KEY` (or missing recipient) → logged no-op, returns success; failure (incl. an un-awaited rejection) is caught and logged **non-fatally** — it **must not** block or fail the 201 (NFR-9).
+- **Rate limit → 429** `{ error: 'too many requests' }`.
+- **Unhandled handler errors** fall through to the existing `onError` → `500 { error: 'internal server error' }`. `notFound` → `404 { error: 'not found' }`. No secret/internal leakage in any body.
+- **`config.ts` unchanged:** `RESEND_API_KEY` and `PRACTICE_TRAINER_ID` are read lazily, never in the throw-on-missing required set (adding them would break boot + the vitest suite with no consumer).
+
+---
+
+## P3a.9 Technology choices (within the fixed stack)
+
+The stack is fixed (one Expo Router codebase; Hono+Drizzle; Resend stub; pure shared). Within-stack 3a picks:
+
+| Pick | Choice | Why |
+| --- | --- | --- |
+| **Routing** | `(site)`/`(app)` route groups; root `<Slot>` | Idiomatic Expo Router, zero config, clean 3b auth boundary on `(app)/_layout.tsx` only (LBD-2). |
+| **SEO** | keep `web.output:"static"` + `expo-router/head` `<Head>` (verify+fallback) | Already enabled; real per-route SEO for a marketing site; React-19/client-side fallbacks if static emit fails (D-6, not a blocker). |
+| **Design System** | `lib/theme.ts` tokens + `StyleSheet` + `Pressable` states + `useWindowDimensions` | No new styling dep (NFR-6); matches the existing `app/index.tsx` idiom; tokens are the single source of truth. |
+| **Fonts** | `expo-font` + `@expo-google-fonts/{fraunces,inter}` via `npx expo install` | Supported path, web+native, FOUT-tolerable with `Georgia`/`system-ui` fallbacks. |
+| **Progress-curve** | hand-rolled `react-native-svg@15.12.1` | Full DS control over the gold-line-on-green look; minimal deps (OQ-16/NFR-6); web+native. |
+| **Map** | OSM `export/embed.html` iframe (`.web.tsx`) + native card+`Linking` (`.native.tsx`) | No API key (D-3/OQ-6); keeps `<iframe>` out of the native bundle. |
+| **Endpoints** | `sessions.ts` pattern + `resolveTrainerId()` + lazy fire-and-forget email | NFR-9 (insert is source of truth); honest 503 on unconfigured practice. |
+| **Rate-limit** | `hono-rate-limiter` on the two routes + Zod `.max()` caps | Demonstrable throttle (AC-3a-9), simple (NFR-2), lives in `apps/api`. |
+
+---
+
+## P3a.10 Integration points & the parallel-unit contract
+
+### P3a.10.1 Ordering & disjointness
+```
+        ┌──────────────────────────────────────────────────────────────┐
+        │  UNIT A — packages/shared : the Phase 3a DTO contract          │
+        │  LANDS FIRST + is COMMITTED before B / C1 start                 │
+        └───────────────┬───────────────────────────────┬────────────────┘
+                        │ (B & C1 type-check against A)   │
+        ┌───────────────▼───────────────┐   ┌────────────▼──────────────────┐
+        │ UNIT B — apps/api              │   │ UNIT C1 — apps/mobile FOUNDATION│
+        │ routes/leads + routes/bookings │   │ theme + fonts + (site)/(app)    │
+        │ lib/email (stub) + lib/trainer │   │ groups + UI primitives +        │
+        │ + rate-limit + mount + vitest  │   │ ProgressCurve + PracticeMap +   │
+        │ + .env.example  (depends on A) │   │ +html + ROUTING restructure +   │
+        │                                │   │ lib/api helpers  (depends on A) │
+        └────────────────────────────────┘   └────────────┬───────────────────┘
+                  DISJOINT DIRS                            │ (C2 imports C1's exports)
+            (apps/api  vs  apps/mobile)      ┌─────────────▼──────────────────┐
+                                             │ UNIT C2 — the 6 (site) pages     │
+                                             │ Home/About/Services/Results/     │
+                                             │ Contact/Booking (ONE agent)      │
+                                             └──────────────────────────────────┘
+```
+1. **Unit A lands and is committed first** (B and C1 both import the new DTOs — they won't type-check until A exists).
+2. After A commits, **B and C1 run in PARALLEL** on **disjoint directories** (`apps/api/**` vs `apps/mobile/**`).
+3. **C1 → C2 is SEQUENTIAL within `apps/mobile`.** C1 commits the routing restructure + theme + primitives + ProgressCurve + PracticeMap + api helpers; **then** C2 builds the six pages consuming C1's exports. **C2 is ONE agent** so the premium design stays visually consistent across all six pages (do not split pages across agents — they share the theme, chrome, and primitives).
+
+### P3a.10.2 File-ownership map (no two units write the same file)
+| Unit | Owns / creates (EXCLUSIVE) | Depends on | Satisfies (AC) |
+| --- | --- | --- | --- |
+| **A** | `packages/shared/src/dtos.ts` (append 4 DTOs + extend the `import type` line) | — (lands first) | AC-3a-1 |
+| **B** | `apps/api/**`: `routes/leads.ts`, `routes/bookings.ts`, `lib/email.ts`, `lib/trainer.ts` (new); `app.ts` (mount + rate-limit edit); `test/leads.test.ts`, `test/bookings.test.ts` (new); `package.json` (add `resend`, `hono-rate-limiter`); **root** `.env.example` (add `PRACTICE_TRAINER_ID` + `RESEND_FROM`); `README.md` (3a API/demo section) | A (committed) | AC-3a-1, AC-3a-6, AC-3a-7, AC-3a-9, AC-3a-10 |
+| **C1** | `apps/mobile/**`: `lib/theme.ts`, `lib/reducedMotion.ts`, `app/+html.tsx`, `app/(site)/_layout.tsx`, `app/(app)/_layout.tsx`, `app/(app)/health.tsx` + moved `dogs`/`sessions`/`events`, `components/SiteChrome.tsx`, `components/ui/*`, `components/ProgressCurve.tsx`, `components/PracticeMap.web.tsx`+`.native.tsx`; **rewrite** `app/_layout.tsx`; **edit** `lib/api.ts`, `package.json` (add fonts + svg) | A (committed) → COMMIT | AC-3a-1, AC-3a-3 (partial), AC-3a-4, AC-3a-8, AC-3a-10 |
+| **C2** | `apps/mobile/app/(site)/*.tsx` only (the 6 pages — consumes C1's exports) | C1 (committed) | AC-3a-1, AC-3a-2, AC-3a-3, AC-3a-4, AC-3a-5, AC-3a-7, AC-3a-8 |
+
+**Two-owner avoidance:** root `.env.example` is owned by **Unit B** alone (it documents `PRACTICE_TRAINER_ID` + `RESEND_FROM`; no mobile env change is needed for 3a). README 3a docs are owned by B; C2's "how to view the site on web" snippet folds in at integration. `docs/design/project-functions.md` is updated by the planner, not a build unit.
+
+### P3a.10.3 Runtime integration points (new in 3a)
+| From | To | Mechanism |
+| --- | --- | --- |
+| Contact page lead form | api `POST /leads` | `createLead()` → `request<LeadDTO>` over `API_URL` |
+| Booking page form | api `POST /bookings` | `createBooking()` → `request<BookingDTO>` over `API_URL` |
+| api `POST /leads` | Resend | `sendLeadNotification()` fire-and-forget (stub when keyless) |
+| api (both routes) | PostgreSQL | `resolveTrainerId()` + `db.insert(lead|booking).returning()` |
+| Contact web page | OpenStreetMap | keyless `<iframe>` embed (no API call from the API) |
+
+---
+
+## P3a.11 Architectural Decisions (D-1..D-9)
+
+These mirror and lock the plan's gate defaults; settled for execution unless vetoed at the review gate.
+
+| # | Decision | This design assumes | Rationale | Where it bites if changed |
+| --- | --- | --- | --- | --- |
+| **D-1** | Route grouping + `/` collision + health move | Public `(site)/*` + authed `(app)/*` route groups; root `_layout`→`<Slot>`; **Home owns `/`**, **health → `/health`** (`(app)/health.tsx`); the `Link href="/dogs"` keeps working | Idiomatic Expo Router; clean 3b auth boundary; resolves the double-`index`-at-`/` error (LBD-2) | The whole C1 mobile restructure; flat-routes-with-conditional-chrome would make the 3b guard a pathname tangle |
+| **D-2** | `trainerId` for PUBLIC writes | `resolveTrainerId()`: `PRACTICE_TRAINER_ID` (lazy) → sole/oldest `trainer` row → throw→503. Never fabricate a `trainerId`. New optional `PRACTICE_TRAINER_ID` in `.env.example` | Honest, debuggable single-practice resolution; the FK rejects empty anyway | Multi-practice would need a per-page trainer selector (out of 3a scope) |
+| **D-3** | Keyless map provider | OSM `export/embed.html` `<iframe>` via `PracticeMap.web.tsx`/`.native.tsx` split; coords in-code | No API key / no billing (OQ-6) | Google Maps Embed would need a key + billing |
+| **D-4** | Copy language | **Greek-first** (Greek nav + headings + in-code Greek body); no switcher, no full i18n. *(Bilingual Greek+English is the veto option.)* | Matches the kickoff's Greek page names; no CMS in scope | Bilingual roughly doubles every page's copy + needs a toggle (larger C2) |
+| **D-5** | Results page data | Tasteful in-code **placeholder array** `{ dogName, summary, before, after, curveData }[]`; may reuse `ProgressCurve`; **no fabricated testimonials** | Real case studies later swap the array contents with no layout change | If real cases exist now, swap the array (no structural change) |
+| **D-6** | SEO static head | **Best-effort:** `<Head>` per page + `+html.tsx` shell; verify via `expo export` + grep; fall back to React-19 bare tags (web-guarded) → client-side-only head. **Not a build blocker** | SDK-54 static emission is UNCERTAIN (issue #833 history); pages render regardless | Guaranteed pre-rendered SEO might force the `+html.tsx` page-map (research Option B), decided at integration |
+| **D-7** | Booking ↔ lead linkage | `POST /bookings` inserts `leadId: null` (no auto-created lead); name/contact folded into `notes` | Keeps 3a simple | Auto-creating/attaching a lead is a small 3b addition (OQ-8) |
+| **D-8** | Rate limiting | `hono-rate-limiter` on the two POST paths (generous per-IP) + Zod `.max()` caps; production edge-limiter deferred | Demonstrable throttle (AC-3a-9), simple (NFR-2), no prod deploy in 3a | Dropping the dep → Zod caps only + a documented edge-limiter note (weakens the "demonstrable throttle" half of AC-3a-9) |
+| **D-9** | Contact details + email recipient | Practice address/hours/phone/email authored **in-code** on Contact; the lead-notification recipient is the **resolved trainer's `trainer.email`** (via `getTrainerEmail`) | Single-practice, no CMS; the seed trainer is the practice (OQ-7) | If details should come from the `trainer` row / an env var, the Contact page + recipient lookup change |
+
+**Resume signal for the gate:** "approved" to proceed with all D-1..D-9 defaults, or name the ones to change (e.g. "D-4 → bilingual", "D-2 → set PRACTICE_TRAINER_ID, no fallback", "D-5 → real cases", "D-8 → Zod caps only").
+
+---
+
+## P3a.12 Verification (maps to AC-3a-1..AC-3a-10)
+
+Run from repo root unless noted.
+1. **Typecheck all workspaces (AC-3a-1):** `npm run typecheck --workspaces` → zero errors across `@tailsup/shared`, `apps/api`, `apps/mobile`.
+2. **API tests (AC-3a-6/7/9):** `npm run test -w apps/api` → 133 existing + new lead/booking tests pass. New tests: `leads.test.ts` (201 + correct `LeadDTO`; missing field → 400; keyless stub path still 201 + stub log, no throw; no-trainer → 503; mock `../db/client.js` + `./email.js`/`resend`), `bookings.test.ts` (201 `'requested'`; bad `type` → 400; non-ISO `requestedAt` → 400; no-trainer → 503).
+3. **No migration (FR):** `git status --porcelain apps/api/drizzle` → empty.
+4. **Shared purity (NFR-6):** `git grep -nE "drizzle|from 'pg'|aws|resend|better-auth|node:" packages/shared/src` → no matches.
+5. **Static web export + SEO grep (AC-3a-3 + D-6):** `cd apps/mobile && npx expo export --platform web` completes; `dist/` contains `index.html`, `about.html`, `services.html`, `results.html`, `contact.html`, `booking.html`; grep one for `<title>`; apply the D-6 fallback if absent. Not a blocker.
+6. **Live-DB demo (AC-3a-5/6/7):** with a seeded `trainer` (or `PRACTICE_TRAINER_ID` set) and the API running, `POST /leads` → 201 `'new'` (+ stub log when keyless), `POST /bookings` → 201 `'requested'`, invalid `type`/`requestedAt` → 400, rapid repeats → 429; then submit the Contact + Booking forms on Expo web and confirm rows insert.
+7. **Business-first inspection (AC-3a-2):** Home is practice-first, **no** progress-curve; the curve appears **only** on Services.
+8. **No 3b/4 leakage (AC-3a-10):** grep the diff for `better-auth`, `AUTH_SECRET` reads, `PATCH /bookings`, `/convert`, `/summary` → none; `cors()` unchanged; Phase 1/2 screens/endpoints unchanged.
+
+---
+
+## P3a.13 Phase 3a Risks & Mitigations (carried from the plan)
+
+| ID | Risk | Mitigation (in this design) |
+| --- | --- | --- |
+| **R-1** | SEO static-head uncertain on SDK 54 (issue #833 history) | P3a.1.4 verify (`expo export` + grep); React-19 bare-tag (web-guarded) → client-side-only fallbacks. **Not a blocker** (D-6). |
+| **R-2** | `react-native-svg` web gradient-id collisions (two curves reuse the first `<LinearGradient>`) | Per-instance gradient id via `useId()` in `ProgressCurve` (P3a.3.6). |
+| **R-3** | RN-Web style limits (no `@media`; web-only props rejected by RN types) | `useWindowDimensions`/`useBreakpoint` for breakpoints; web-only props via narrow `Platform.select({ web: {…} as any })` (sticky header, cursor, outline). |
+| **R-4** | Font FOUT on web | Acceptable `Georgia`/`system-ui` fallbacks + `FontDisplay.SWAP`; never block the whole web site on font load (quality floor). |
+| **R-5** | `/` route collision (two `index` at `/`) | D-1: Home owns `/`; health → `(app)/health.tsx` (`/health`); move in C1; verify `/dogs` link. |
+| **R-6** | Email stub must NOT block the 201 (awaiting Resend couples latency / can 5xx) | Fire-and-forget `void send(...).catch(...)`, never awaited; `RESEND_API_KEY` out of `config.ts`; tests assert 201 regardless (P3a.6). |
+| **R-7** | `resolveTrainerId()` throw path (no trainer + no env → could 500 / FK violation) | Explicit throw → `503 { error: 'practice not configured' }`; never insert empty `trainerId`; tested (P3a.5.3). |
+| **R-8** | Homepage drifts into app-showcase (violates business-first DS-7) | AC-3a-2 inspection; C2 forbids the curve on Home + limits to one bold moment; Services owns the data-platform framing (P3a.4.1/.3). |
+| **R-9** | `<iframe>` leaks into the native bundle (RN rejects unknown element) | `PracticeMap.web.tsx`/`.native.tsx` platform split; no `<iframe>` JSX in shared/native code (P3a.3.8). |
+| **R-10** | Metro monorepo resolution of new font/svg packages | `npx expo install` (not bare npm); documented `metro.config.js` fallback in `app/index.tsx:9-33` if needed (do not add pre-emptively). |
+| **R-11** | Rate-limiter IP behind proxy (in-memory, single-instance) | Generous window keyed by `x-forwarded-for` → connecting IP; documented that prod adds an edge limiter (D-8). |
+
+---
+
+_Phase 3a plan: `docs/design/plan-003-tailsup-phase3a-public-site.md` · Refined spec: `docs/reference/refined-request-phase3.md` (3a parts) · Investigation: `docs/reference/investigation-phase3a.md` · SEO research: `docs/research/expo-router-static-head-sdk54.md` · Design System reference: `design_system.md` (repo root) · Kickoff: `prompts/001-tailsup-kickoff.md` · Phases 1+2 design: this document (above)._
