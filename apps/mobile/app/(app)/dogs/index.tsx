@@ -21,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type { DogSummaryDTO } from '@tailsup/shared';
-import { ApiError, TRAINER_ID, getDogs, startSession } from '../../lib/api';
+import { ApiError, TRAINER_ID, getDogs, startSession } from '../../../lib/api';
 
 type Status =
   | { kind: 'loading' }

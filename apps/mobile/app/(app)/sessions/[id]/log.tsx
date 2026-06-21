@@ -30,7 +30,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { OUTCOMES, TRIGGER_TYPES } from '@tailsup/shared';
 import type { CreateBehaviorEventInput, Outcome, TriggerType } from '@tailsup/shared';
-import { ApiError, postEvent } from '../../../lib/api';
+import { ApiError, postEvent } from '../../../../lib/api';
 
 // Pre-defaults so an unchanged field costs zero taps (R-5).
 const DEFAULT_TRIGGER: TriggerType = 'dog';

@@ -28,14 +28,14 @@ import { useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import type { BehaviorEventWithMediaDTO, MediaDTO } from '@tailsup/shared';
-import { ApiError, getEvent, getMediaPlaybackUrl, patchEvent } from '../../lib/api';
+import { ApiError, getEvent, getMediaPlaybackUrl, patchEvent } from '../../../lib/api';
 import {
   ALLOWED_VIDEO_TYPES,
   SOFT_SIZE_WARN_BYTES,
   isAllowedVideoType,
   uploadVideo,
   type PickedVideo,
-} from '../../lib/upload';
+} from '../../../lib/upload';
 
 type Status =
   | { kind: 'loading' }

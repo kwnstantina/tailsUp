@@ -16,11 +16,15 @@ import type {
   BehaviorEventDTO,
   BehaviorEventListItemDTO,
   BehaviorEventWithMediaDTO,
+  BookingDTO,
   CreateBehaviorEventInput,
+  CreateBookingInput,
+  CreateLeadInput,
   CreateMediaInput,
   DogDetailDTO,
   DogSummaryDTO,
   DogTimelineDTO,
+  LeadDTO,
   MediaDTO,
   MediaPlaybackUrlDTO,
   PresignRequest,
@@ -157,6 +161,28 @@ export function presign(body: PresignRequest): Promise<PresignResponse> {
 
 export function createMedia(eventId: string, body: CreateMediaInput): Promise<MediaDTO> {
   return request<MediaDTO>(`/events/${encodeURIComponent(eventId)}/media`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Phase 3a public capture (PUBLIC, no auth) ─────────────────────────────────
+
+// POST /leads — the Contact page lead form. The page sets `source`
+// (e.g. 'website-contact'). Server resolves the practice trainer and replies 201.
+export function createLead(body: CreateLeadInput): Promise<LeadDTO> {
+  return request<LeadDTO>('/leads', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
+// POST /bookings — the Booking page form. `requestedAt` is an ISO datetime;
+// name/contact are captured into the booking notes server-side (no columns).
+export function createBooking(body: CreateBookingInput): Promise<BookingDTO> {
+  return request<BookingDTO>('/bookings', {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(body),

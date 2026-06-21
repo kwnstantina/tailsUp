@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { BehaviorEventDTO, DogTimelineDTO } from '@tailsup/shared';
-import { ApiError, getDogTimeline } from '../../../lib/api';
+import { ApiError, getDogTimeline } from '../../../../lib/api';
 
 type Status =
   | { kind: 'loading' }
