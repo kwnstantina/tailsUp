@@ -80,6 +80,10 @@ vi.mock('../lib/r2.js', () => ({
   buildKey: vi.fn(),
 }));
 
+// Phase 3b: /media/* now requires a trainer session — mock auth.
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
+import { authState, trainerSession } from './authMock.js';
+
 import { app } from '../app.js';
 
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
@@ -125,6 +129,7 @@ const MOCK_PRESIGN_RESPONSE = {
 // ── beforeEach ────────────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
+  authState.session = trainerSession('a0000000-0000-0000-0000-0000000000e4');
   mocks.selectResultQueue.length = 0;
 
   mocks.mockLimit.mockImplementation(() =>

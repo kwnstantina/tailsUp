@@ -1,7 +1,7 @@
 // DTOs for the Phase 1 endpoints (single source of truth — FR-9).
 // PURE TypeScript types only — no runtime/server imports (Metro-safe).
 
-import type { TriggerType, Outcome, MediaType, BookingType, LeadStatus, BookingStatus } from './enums';
+import type { TriggerType, Outcome, MediaType, BookingType, LeadStatus, BookingStatus, Role } from './enums';
 
 // Request body for POST /sessions/:id/events
 // (intervention optional -> defaulted from the dog's Protocol.defaultIntervention)
@@ -178,3 +178,22 @@ export interface BookingDTO {
   notes: string | null;
   createdAt: string;      // ISO
 }
+
+// ── Phase 3b DTOs (Auth) — appended below Phase 3a ──────────────────────────────
+
+// The authenticated user as the app consumes it (projected from BetterAuth's
+// session.user). `role` drives the post-login landing + the route guard; the
+// domain links (trainerId/clientId) are the input:false fields carried on the
+// BetterAuth user row. Phase 3b replaces the EXPO_PUBLIC_TRAINER_ID stop-gap with
+// session.trainerId — so a logged-in trainer's screens resolve their own id here.
+export interface SessionUserDTO {
+  id: string;                 // BetterAuth user id (NOT the domain trainer/client id)
+  email: string;
+  name: string;
+  role: Role;                 // 'trainer' | 'client'
+  trainerId: string | null;   // set when role === 'trainer'; null otherwise
+  clientId: string | null;    // set when role === 'client'; null otherwise
+}
+
+// Alias — the refined spec references both names for the session shape (FR-A11).
+export type AuthUserDTO = SessionUserDTO;

@@ -21,7 +21,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type { DogSummaryDTO } from '@tailsup/shared';
-import { ApiError, TRAINER_ID, getDogs, startSession } from '../../../lib/api';
+import { ApiError, getDogs, startSession } from '../../../lib/api';
+import { useSession } from '../../../lib/auth-client';
 
 type Status =
   | { kind: 'loading' }
@@ -30,26 +31,30 @@ type Status =
 
 export default function DogsScreen() {
   const router = useRouter();
+  const { data: session } = useSession();
+  // Phase 3b: the trainer id comes from the authenticated session (retires the
+  // EXPO_PUBLIC_TRAINER_ID stop-gap). A client who reaches this screen has no
+  // trainerId — the load surfaces that, and the API would 403 regardless.
+  const trainerId = session?.user?.trainerId ?? null;
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [startingId, setStartingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus({ kind: 'loading' });
-    if (!TRAINER_ID) {
+    if (!trainerId) {
       setStatus({
         kind: 'error',
-        message:
-          'EXPO_PUBLIC_TRAINER_ID is not set. Add a seeded trainer id to apps/mobile/.env, then reload.',
+        message: 'This account has no trainer profile. Sign in with a trainer account.',
       });
       return;
     }
     try {
-      const dogs = await getDogs(TRAINER_ID);
+      const dogs = await getDogs(trainerId);
       setStatus({ kind: 'success', dogs });
     } catch (err) {
       setStatus({ kind: 'error', message: messageFor(err) });
     }
-  }, []);
+  }, [trainerId]);
 
   useEffect(() => {
     void load();

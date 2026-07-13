@@ -12,6 +12,7 @@
 // keys). Mirror app/index.tsx:54.
 // =============================================================================
 
+import { Platform } from 'react-native';
 import type {
   BehaviorEventDTO,
   BehaviorEventListItemDTO,
@@ -32,14 +33,23 @@ import type {
   SessionSummaryDTO,
   UpdateBehaviorEventInput,
 } from '@tailsup/shared';
+import { authClient } from './auth-client';
 
 // Base URL — static dot-access so Expo can inline it. Dev default localhost:3000
 // (correct for Expo web & iOS simulator; see apps/mobile/.env.example).
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-// The seeded trainer id (G-1: pre-auth trainer context). Static dot-access too.
-// May be undefined if the dev hasn't set it — the dog-list screen surfaces that.
-export const TRAINER_ID = process.env.EXPO_PUBLIC_TRAINER_ID;
+// Phase 3b RETIRES the EXPO_PUBLIC_TRAINER_ID stop-gap: the trainer id now comes
+// from the authenticated session (authClient.useSession().data.user.trainerId),
+// not a build-time env var. Auth transport per LBD-3:
+//   - Web: the browser holds the httpOnly session cookie; credentials:'include'
+//     sends it (CORS is credentialed + origin-allow-listed on the API).
+//   - Native: no cookie jar — attach the SecureStore-persisted cookie explicitly.
+function authHeader(): Record<string, string> {
+  if (Platform.OS === 'web') return {};
+  const cookie = authClient.getCookie();
+  return cookie ? { Cookie: cookie } : {};
+}
 
 /**
  * A thrown API failure carrying the HTTP status (when there was a response) so
@@ -75,7 +85,13 @@ async function readErrorMessage(res: Response): Promise<string> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, init);
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      // Web: send the session cookie cross-origin (CORS is credentialed).
+      credentials: 'include',
+      // Native: attach the SecureStore cookie; web merges an empty object.
+      headers: { ...(init?.headers ?? {}), ...authHeader() },
+    });
   } catch {
     // Network-level failure (server down, wrong host, CORS, etc.) — no status.
     throw new ApiError('API unreachable', undefined);

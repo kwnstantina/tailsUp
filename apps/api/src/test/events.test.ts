@@ -64,6 +64,10 @@ vi.mock('../db/client.js', () => ({
 }));
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Phase 3b: POST /sessions/:id/events now requires a trainer session — mock auth.
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
+import { authState, trainerSession } from './authMock.js';
+
 import { app } from '../app.js';
 
 // Satisfy config.ts' required() check (runs when client.ts imports config.ts).
@@ -125,6 +129,7 @@ function makeBehaviorEventRow(overrides: {
 describe('POST /sessions/:id/events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.session = trainerSession('a0000000-0000-0000-0000-0000000000e1');
     // Drain the queue and reset insert result.
     mocks.selectResultQueue.length = 0;
     mocks.insertResult = [];

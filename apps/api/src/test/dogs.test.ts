@@ -101,6 +101,11 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// Phase 3b: the trainer routes are now guarded. Mock BetterAuth so a trainer
+// session is present (set in beforeEach); avoids constructing real BetterAuth.
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
+import { authState, trainerSession } from './authMock.js';
+
 import { app } from '../app.js';
 
 // Satisfy config.ts required() at module load time.
@@ -171,6 +176,9 @@ function makeBehaviorEventRow(overrides: Partial<{
 // ── beforeEach: drain the queue and reset mock chains ────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
+  // Authenticated as the fixture trainer (matches TRAINER_ID so the
+  // /trainers/:trainerId/* ownership guard passes).
+  authState.session = trainerSession(TRAINER_ID);
   mocks.selectResultQueue.length = 0;
   mocks.insertResult = [];
 
@@ -220,15 +228,14 @@ describe('GET /trainers/:trainerId/dogs', () => {
     expect(body).toHaveLength(0);
   });
 
-  it('returns 200 with an empty array for a completely unknown trainer id', async () => {
-    mocks.selectResultQueue.push([]);
-
+  it('returns 403 when the path trainerId does not match the session trainer (Phase 3b ownership guard)', async () => {
+    // A trainer may only read their OWN data (OQ-10). The session trainer is
+    // TRAINER_ID; requesting another trainer's id is forbidden.
     const res = await app.request('/trainers/00000000-0000-0000-0000-000000000000/dogs');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
-    expect(body).toHaveLength(0);
+    expect(body).toEqual({ error: 'forbidden' });
   });
 
   it('returns 200 with a DogSummaryDTO array for a trainer with dogs', async () => {

@@ -27,7 +27,7 @@ import { PracticeNotConfiguredError, resolveTrainerId } from '../lib/trainer.js'
 // practice to follow up (folded into notes). .max caps satisfy FR-A3.
 const createBooking = z.object({
   type: z.enum(BOOKING_TYPES),
-  requestedAt: z.string().datetime(),
+  requestedAt: z.iso.datetime(),
   name: z.string().min(1).max(200),
   contact: z.string().min(1).max(200),
   notes: z.string().max(2000).optional(),

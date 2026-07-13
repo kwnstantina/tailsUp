@@ -7,6 +7,9 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
+    // Phase 3b: provide the now-required AUTH_SECRET before any test imports
+    // app.ts (which loads config.ts). Auth itself is mocked per-file.
+    setupFiles: ['./src/test/setup.ts'],
     // Treat unhandled promise rejections as test failures.
     dangerouslyIgnoreUnhandledErrors: false,
     // Isolate each test file so module-level side-effects (config reads) do

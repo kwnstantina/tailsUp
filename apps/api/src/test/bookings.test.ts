@@ -55,6 +55,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// Phase 3b: mock BetterAuth so real auth isn't constructed (public routes ignore the session).
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
+
 import { app } from '../app.js';
 
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';

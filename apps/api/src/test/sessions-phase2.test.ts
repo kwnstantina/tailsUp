@@ -61,6 +61,10 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// Phase 3b: /sessions/* now requires a trainer session — mock auth.
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
+import { authState, trainerSession } from './authMock.js';
+
 import { app } from '../app.js';
 
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
@@ -103,6 +107,7 @@ function makeEventRow(overrides: Partial<{
 // ── beforeEach ────────────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
+  authState.session = trainerSession('a0000000-0000-0000-0000-0000000000e3');
   mocks.selectResultQueue.length = 0;
 
   mocks.mockLimit.mockImplementation(() =>

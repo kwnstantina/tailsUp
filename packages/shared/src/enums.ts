@@ -9,9 +9,14 @@ export const LEAD_STATUSES = ['new', 'contacted', 'converted', 'lost'] as const;
 export const BOOKING_TYPES = ['assessment', 'private', 'group'] as const;
 export const BOOKING_STATUSES = ['requested', 'confirmed', 'declined', 'completed', 'cancelled'] as const;
 
+// Phase 3b — auth roles. The single source of truth for the BetterAuth `role`
+// field (apps/api) and the role checks in the mobile guard (apps/mobile).
+export const ROLES = ['trainer', 'client'] as const;
+
 export type TriggerType = (typeof TRIGGER_TYPES)[number];
 export type Outcome = (typeof OUTCOMES)[number];
 export type MediaType = (typeof MEDIA_TYPES)[number];
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type BookingType = (typeof BOOKING_TYPES)[number];
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+export type Role = (typeof ROLES)[number];

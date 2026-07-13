@@ -178,7 +178,7 @@ dogs.get('/dogs/:id/timeline', async (c) => {
 
 // ── POST /dogs/:id/sessions (G-2 / OQ-7) — the one borderline write ─────────────
 const startSessionBody = z.object({
-  startedAt: z.string().datetime().optional(), // ISO; defaults to now
+  startedAt: z.iso.datetime().optional(), // ISO; defaults to now (zod v4: z.iso.datetime)
   location: z.string().optional(),
 });
 
