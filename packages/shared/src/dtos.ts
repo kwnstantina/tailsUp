@@ -197,3 +197,75 @@ export interface SessionUserDTO {
 
 // Alias — the refined spec references both names for the session shape (FR-A11).
 export type AuthUserDTO = SessionUserDTO;
+
+// ── Phase 3b-2 DTOs (Role dashboards + lead/booking management) ──────────────────
+// (Outcome + BookingStatus are already imported at the top of this file.)
+
+// ---- Trainer management ----
+
+// PATCH /bookings/:id/status body (TRAINER). `requested` is NOT a valid target (DG-4):
+// a booking is created 'requested' by the public 3a endpoint; the trainer moves it forward.
+export interface UpdateBookingStatusInput {
+  status: Exclude<BookingStatus, 'requested'>; // 'confirmed' | 'declined' | 'completed' | 'cancelled'
+}
+
+// A domain `client` row (created by lead conversion). NOT the BetterAuth user.
+export interface ClientDTO {
+  id: string;
+  trainerId: string;
+  name: string;
+  contact: string;        // free-text email/phone (carried over from the lead)
+}
+
+// POST /leads/:id/convert response — the new client + the updated lead (DG-5).
+export interface ConvertLeadResponse {
+  client: ClientDTO;
+  lead: LeadDTO;          // status:'converted', clientId set
+}
+
+// POST /clients/:id/login body (TRAINER) — the trainer sets the client's initial
+// password (DG-1). Provisioning is a SEPARATE action from conversion.
+export interface CreateClientLoginInput {
+  email: string;
+  password: string;       // >= 8 (BetterAuth minPasswordLength)
+}
+
+// POST /clients/:id/login response — the provisioned login, linked to the client.
+export interface ClientLoginDTO {
+  userId: string;         // BetterAuth user id
+  clientId: string;       // the linked domain client id
+  email: string;
+}
+
+// ---- Client dashboard ----
+
+// One homework row joined to its exercise (GET /me/homework).
+export interface HomeworkDTO {
+  id: string;
+  dogId: string;
+  exerciseId: string;
+  title: string;          // exercise.title
+  instructions: string;   // exercise.instructions
+  completed: boolean;
+  completedAt: string | null; // ISO
+}
+
+// PATCH /me/homework/:id body — mark (in)complete (the only client write in 3b-2).
+export interface UpdateHomeworkInput {
+  completed: boolean;
+}
+
+// One point on the threshold-over-time series.
+export interface ProgressPointDTO {
+  occurredAt: string;     // ISO
+  thresholdMeters: number;
+  intensity: number;
+  outcome: Outcome;
+}
+
+// GET /me/progress returns one of these per client dog (DG-6). `points` are
+// chronological (oldest → newest) so ProgressCurve plots them left-to-right.
+export interface ClientProgressDTO {
+  dog: DogSummaryDTO;
+  points: ProgressPointDTO[];
+}

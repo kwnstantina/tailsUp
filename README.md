@@ -442,15 +442,108 @@ Open the web app, go to **/login**, and sign in:
 - Full step-by-step (including the live-DB sign-in smoke test) is in
   `docs/reference/integration-verification-phase3b1.md`.
 
+## Phase 3b-2 — Role dashboards + lead/booking management
+
+Phase 3b-2 turns the authed shell into a working two-audience product: a **client
+dashboard** (threshold-over-time graph, homework list with mark-complete, in-app
+derived reminders) and a **trainer management** area (triage leads/bookings,
+convert a lead to a client, provision that client's login, transition a booking's
+status) — backed by the role-scoped auth'd endpoints. No schema migration
+(`apps/api/drizzle` unchanged); reads/writes existing columns only.
+
+### API endpoints (role-scoped)
+
+| Method + path | Auth | Purpose |
+| --- | --- | --- |
+| `GET /trainers/:trainerId/leads` | trainer (own) | Leads, newest-first (`LeadDTO[]`). |
+| `GET /trainers/:trainerId/bookings` | trainer (own) | Bookings, newest-first (`BookingDTO[]`). |
+| `PATCH /bookings/:id/status` | trainer | Transition a booking → `confirmed`/`declined`/`completed`/`cancelled` (`400` on `requested`/garbage, `404` not-theirs). |
+| `POST /leads/:id/convert` | trainer | Lead → domain `client` + lead `converted` in one txn (`409` already-converted, `404` not-theirs). |
+| `POST /clients/:id/login` | trainer | Provision a BetterAuth login for a client (trainer sets the initial password; `409` if the email exists, `404` not-theirs). |
+| `GET /me/progress` | client | `ClientProgressDTO[]` — one per dog, threshold series from real `behavior_event`. |
+| `GET /me/homework` | client | `HomeworkDTO[]` joined to the exercise, incomplete-first. |
+| `PATCH /me/homework/:id` | client | Mark (in)complete — the only client write (`404` if not the client's homework). |
+| `GET /me/bookings` | client | The client's bookings, newest-first (feeds the derived reminders). |
+
+Guarding (`apps/api/src/app.ts`): the two trainer GET lists are covered by the
+existing `/trainers/:trainerId/*` ownership guard; `/me/*` gets a single
+`requireClient` prefix guard; the three trainer **mutations** carry a
+**route-scoped `requireTrainer`** (a prefix guard on `/leads/*` or `/bookings/*`
+would gate the PUBLIC `POST /leads` + `POST /bookings`). Every mutation re-checks
+row ownership against the session id (→ `403`/`404`, never revealing others' rows).
+
+### Seed logins + per-role verify (live DB)
+
+```bash
+# 0. Node 20 + a running Postgres, then migrate + seed (creates BOTH logins):
+npm run db:migrate -w apps/api
+npm run db:seed -w apps/api
+#   → trainer@tailsup.local / Trainer123!   (role trainer)
+#   → client@tailsup.local  / Client123!    (role client, linked to a dog + homework + 5 events)
+
+npm run dev -w apps/api   # API on http://localhost:8787 (or your PORT)
+```
+
+**Client walkthrough** — sign in and reuse the cookie:
+
+```bash
+# Sign in (web-cookie flow) — save the Set-Cookie into cookies.txt.
+curl -i -c cookies.txt -X POST http://localhost:8787/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"client@tailsup.local","password":"Client123!"}'
+
+curl -b cookies.txt http://localhost:8787/me/progress    # → dog + 5 threshold points
+curl -b cookies.txt http://localhost:8787/me/homework    # → 2 rows (one complete)
+curl -b cookies.txt http://localhost:8787/me/bookings     # → the client's bookings
+
+# Mark a homework complete (id from /me/homework):
+curl -b cookies.txt -X PATCH http://localhost:8787/me/homework/<HW_ID> \
+  -H 'Content-Type: application/json' -d '{"completed":true}'   # → completedAt set
+
+# A client cookie against a trainer mutation is rejected:
+curl -b cookies.txt -X PATCH http://localhost:8787/bookings/<ID>/status \
+  -H 'Content-Type: application/json' -d '{"status":"confirmed"}'   # → 403
+```
+
+**Trainer walkthrough** — create a lead/booking via the public 3a endpoints first,
+then triage them:
+
+```bash
+curl -i -c trainer.txt -X POST http://localhost:8787/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"trainer@tailsup.local","password":"Trainer123!"}'
+
+# TRAINER_ID is session.user.trainerId (printed by db:seed).
+curl -b trainer.txt http://localhost:8787/trainers/<TRAINER_ID>/leads
+curl -b trainer.txt http://localhost:8787/trainers/<TRAINER_ID>/bookings
+
+# Convert a lead → 201 { client, lead:'converted' }; re-convert → 409:
+curl -b trainer.txt -X POST http://localhost:8787/leads/<LEAD_ID>/convert
+
+# Provision that client's login → 201 { userId, clientId, email }:
+curl -b trainer.txt -X POST http://localhost:8787/clients/<CLIENT_ID>/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"newclient@example.com","password":"ChangeMe123!"}'
+
+# Transition a booking → 200; an invalid target → 400; another trainer's row → 404:
+curl -b trainer.txt -X PATCH http://localhost:8787/bookings/<BOOKING_ID>/status \
+  -H 'Content-Type: application/json' -d '{"status":"confirmed"}'
+```
+
+### Verify
+
+- `npm run typecheck -w apps/api` → clean.
+- API tests: **226 pass** (adds `management.test.ts` 24 + `me.test.ts` 17). Role
+  rejection is asserted by request (client→trainer-mutation `403`, trainer→`/me/*`
+  `403`, cross-owner `404`), not just by UI.
+- `git status --porcelain apps/api/drizzle` → **empty** (no migration).
+
 ## Phase boundary
 
 Built: **Phase 1 — Foundations**, **Phase 2 — Trainer view**, **Phase 3a —
-Public site + capture** (`POST /leads`, `POST /bookings`), and **Phase 3b-1 —
-Auth foundation** (above). Intentionally **NOT** built yet:
+Public site + capture** (`POST /leads`, `POST /bookings`), **Phase 3b-1 — Auth
+foundation**, and **Phase 3b-2 — Role dashboards + lead/booking management**
+(above). Intentionally **NOT** built yet:
 
-- **Phase 3b-2 — Dashboards & management:** client dashboard (threshold graph,
-  homework, reminders), trainer lead/booking management, and
-  `PATCH /bookings/:id/status`, `POST /leads/:id/convert` (+ the trainer
-  "create client login" flow).
 - **Phase 4 — AI & scale:** `POST /dogs/:id/summary` (Anthropic
   claude-haiku-4-5), AI spend-cap reminders, multi-tenant SaaS prep.

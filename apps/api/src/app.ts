@@ -11,6 +11,7 @@ import { rateLimiter } from 'hono-rate-limiter';
 import { config } from './config.js';
 import { auth } from './lib/auth.js';
 import {
+  requireClient,
   requireTrainer,
   requireTrainerOwnsParam,
   sessionMiddleware,
@@ -23,6 +24,8 @@ import { events } from './routes/events.js';
 import { media } from './routes/media.js';
 import { leads } from './routes/leads.js';
 import { bookings } from './routes/bookings.js';
+import { management } from './routes/management.js';
+import { me } from './routes/me.js';
 
 export const app = new Hono<AppEnv>();
 
@@ -89,6 +92,15 @@ app.use('/sessions/*', requireTrainer);
 app.use('/events/*', requireTrainer);
 app.use('/media/*', requireTrainer);
 
+// ── Client-only guard for the Phase 3b-2 client dashboard (FR-C*) ───────────────
+// The `/me/*` prefix requires a client session (no collision — nothing under /me is
+// public). The client id comes from the SESSION, not a path param (DG-2). The
+// trainer management MUTATIONS (convert / status / create-login) are NOT prefix-
+// guarded here: they live under /leads, /bookings, /clients which collide with the
+// PUBLIC POST /leads + POST /bookings, so they carry a route-scoped requireTrainer
+// inside management.ts instead (a prefix guard would gate the public POSTs).
+app.use('/me/*', requireClient);
+
 // ── Routes ─────────────────────────────────────────────────────────────────────
 // PUBLIC: health + the Phase 3a capture endpoints. GUARDED (above): the trainer
 // routes under dogs/sessions/events/media/trainers.
@@ -102,6 +114,13 @@ app.route('/', media);
 // Phase 3a — PUBLIC capture endpoints (design P3a). Unauthenticated.
 app.route('/', leads);
 app.route('/', bookings);
+
+// Phase 3b-2 — role-scoped endpoints. `management` = trainer leads/bookings +
+// convert / status / create-login (GET lists gated by the /trainers/:trainerId/*
+// prefix guard; the three mutations route-scoped-guarded). `me` = the client
+// dashboard reads/write (gated by the /me/* prefix guard above).
+app.route('/', management);
+app.route('/', me);
 
 // Consistent JSON error handling — never leak internals.
 app.onError((err, c) => {

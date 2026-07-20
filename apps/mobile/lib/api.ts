@@ -18,13 +18,18 @@ import type {
   BehaviorEventListItemDTO,
   BehaviorEventWithMediaDTO,
   BookingDTO,
+  ClientLoginDTO,
+  ClientProgressDTO,
+  ConvertLeadResponse,
   CreateBehaviorEventInput,
   CreateBookingInput,
+  CreateClientLoginInput,
   CreateLeadInput,
   CreateMediaInput,
   DogDetailDTO,
   DogSummaryDTO,
   DogTimelineDTO,
+  HomeworkDTO,
   LeadDTO,
   MediaDTO,
   MediaPlaybackUrlDTO,
@@ -32,6 +37,7 @@ import type {
   PresignResponse,
   SessionSummaryDTO,
   UpdateBehaviorEventInput,
+  UpdateBookingStatusInput,
 } from '@tailsup/shared';
 import { authClient } from './auth-client';
 
@@ -203,4 +209,77 @@ export function createBooking(body: CreateBookingInput): Promise<BookingDTO> {
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
   });
+}
+
+// ── Phase 3b-2 trainer management (session.user.trainerId passed in by screen) ─
+// The trainer id is verified server-side (requireTrainerOwnsParam on the list
+// reads; route-scoped requireTrainer + ownership checks on the mutations). The
+// id args are UX plumbing only — the security boundary is the API.
+
+// GET /trainers/:trainerId/leads — the trainer's incoming leads, newest-first.
+export function getTrainerLeads(trainerId: string): Promise<LeadDTO[]> {
+  return request<LeadDTO[]>(`/trainers/${encodeURIComponent(trainerId)}/leads`);
+}
+
+// GET /trainers/:trainerId/bookings — the trainer's bookings, newest-first.
+export function getTrainerBookings(trainerId: string): Promise<BookingDTO[]> {
+  return request<BookingDTO[]>(`/trainers/${encodeURIComponent(trainerId)}/bookings`);
+}
+
+// PATCH /bookings/:id/status — move a booking forward (confirmed/declined/…).
+export function updateBookingStatus(
+  id: string,
+  body: UpdateBookingStatusInput,
+): Promise<BookingDTO> {
+  return request<BookingDTO>(`/bookings/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
+// POST /leads/:id/convert — create the domain client + flip the lead to converted.
+export function convertLead(id: string): Promise<ConvertLeadResponse> {
+  return request<ConvertLeadResponse>(`/leads/${encodeURIComponent(id)}/convert`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+  });
+}
+
+// POST /clients/:id/login — provision the client's BetterAuth login (trainer sets pw).
+export function createClientLogin(
+  clientId: string,
+  body: CreateClientLoginInput,
+): Promise<ClientLoginDTO> {
+  return request<ClientLoginDTO>(`/clients/${encodeURIComponent(clientId)}/login`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
+// ── Phase 3b-2 client dashboard (session-scoped — no id in the path) ──────────
+
+// GET /me/progress — one entry per client dog, points chronological (DG-6).
+export function getMyProgress(): Promise<ClientProgressDTO[]> {
+  return request<ClientProgressDTO[]>('/me/progress');
+}
+
+// GET /me/homework — the client's homework, incomplete-first.
+export function getMyHomework(): Promise<HomeworkDTO[]> {
+  return request<HomeworkDTO[]>('/me/homework');
+}
+
+// PATCH /me/homework/:id { completed:true } — the only client write in 3b-2.
+export function completeHomework(id: string): Promise<HomeworkDTO> {
+  return request<HomeworkDTO>(`/me/homework/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ completed: true }),
+  });
+}
+
+// GET /me/bookings — the client's bookings, newest-first (feeds derived reminders).
+export function getMyBookings(): Promise<BookingDTO[]> {
+  return request<BookingDTO[]>('/me/bookings');
 }

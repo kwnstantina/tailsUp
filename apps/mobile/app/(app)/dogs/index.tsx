@@ -19,10 +19,16 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import type { DogSummaryDTO } from '@tailsup/shared';
 import { ApiError, getDogs, startSession } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+
+// The trainer management routes. Cast to Href because Metro regenerates the
+// typed-route union only on `expo start`/export — the new /manage/* routes are
+// not yet in .expo/types/router.d.ts at typecheck time (see plan typed-route note).
+const MANAGE_LEADS = '/manage/leads' as Href;
+const MANAGE_BOOKINGS = '/manage/bookings' as Href;
 
 type Status =
   | { kind: 'loading' }
@@ -80,6 +86,33 @@ export default function DogsScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.heading}>My Dogs</Text>
         <Text style={styles.subheading}>Pick a dog to view its timeline or start a session</Text>
+
+        <View style={styles.manageRow}>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push(MANAGE_LEADS)}
+            style={({ focused, pressed }) => [
+              styles.manageButton,
+              focused && styles.manageButtonFocused,
+              pressed && styles.buttonPressed,
+              Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
+            ]}
+          >
+            <Text style={styles.manageButtonText}>Leads</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => router.push(MANAGE_BOOKINGS)}
+            style={({ focused, pressed }) => [
+              styles.manageButton,
+              focused && styles.manageButtonFocused,
+              pressed && styles.buttonPressed,
+              Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
+            ]}
+          >
+            <Text style={styles.manageButtonText}>Bookings</Text>
+          </Pressable>
+        </View>
 
         {status.kind === 'loading' && (
           <View style={[styles.card, styles.cardNeutral]}>
@@ -176,6 +209,17 @@ const styles = StyleSheet.create({
   },
   heading: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
   subheading: { fontSize: 14, color: '#64748b', marginTop: -6 },
+  manageRow: { flexDirection: 'row', gap: 10 },
+  manageButton: {
+    backgroundColor: '#1B3A32',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  manageButtonFocused: { borderColor: '#B07D48' },
+  manageButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
   card: { borderRadius: 12, padding: 16, borderWidth: 1, gap: 8 },
   cardNeutral: {
     backgroundColor: '#ffffff',

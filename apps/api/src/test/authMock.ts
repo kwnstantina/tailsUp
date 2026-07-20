@@ -30,6 +30,8 @@ export const authState: { session: MockSession | null } = { session: null };
 
 // The mock BetterAuth instance app.ts + middleware/auth.ts import. handler is a
 // stub (tests never hit /api/auth/*); getSession returns the current authState.
+// signUpEmail is used by the Phase 3b-2 trainer create-login route — tests drive it
+// with mockResolvedValue / mockRejectedValueOnce (a rejection = "email exists").
 export const auth = {
   handler: vi.fn(
     async () =>
@@ -37,6 +39,7 @@ export const auth = {
   ),
   api: {
     getSession: vi.fn(async () => authState.session),
+    signUpEmail: vi.fn(async () => ({ user: { id: 'auth-new' } })),
   },
 };
 

@@ -65,6 +65,8 @@ export default function AppLayout() {
       <Stack.Screen name="health" options={{ title: 'TailsUp · API Health' }} />
       <Stack.Screen name="client" options={{ title: 'My Dashboard' }} />
       <Stack.Screen name="dogs/index" options={{ title: 'My Dogs' }} />
+      <Stack.Screen name="manage/leads" options={{ title: 'Leads' }} />
+      <Stack.Screen name="manage/bookings" options={{ title: 'Bookings' }} />
       <Stack.Screen name="dogs/[id]/timeline" options={{ title: 'Timeline' }} />
       <Stack.Screen name="sessions/[id]/log" options={{ title: 'Log Event' }} />
       <Stack.Screen name="events/[id]" options={{ title: 'Event Detail' }} />
