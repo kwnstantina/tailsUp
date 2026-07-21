@@ -1,22 +1,22 @@
 {
   "workflow": "team-workflow",
-  "timestamp": "2026-06-21T17:30:00Z",
-  "request_summary": "TailsUp Phase 3b - App auth + dashboards. BetterAuth (self-hosted, roles trainer|client) across Hono API + Expo (web cookies / native bearer). Client dashboard (threshold-over-time graph via ProgressCurve, homework, reminders). Trainer view: list/approve leads & bookings, convert leads. Trainer-auth endpoints: PATCH /bookings/:id/status, POST /leads/:id/convert. Tighten CORS; retire EXPO_PUBLIC_TRAINER_ID stop-gap.",
+  "timestamp": "2026-07-21T14:10:00Z",
+  "request_summary": "TailsUp Phase 3b-2 - Role dashboards + lead/booking management. Client dashboard (threshold-over-time graph via ProgressCurve, homework list with mark-complete, in-app derived reminders). Trainer management (list leads/bookings, PATCH /bookings/:id/status, POST /leads/:id/convert, POST /clients/:id/login). Role-scoped auth'd endpoints under /me/* (client) + /trainers/:id/* and route-scoped trainer mutations. No schema migration.",
   "product_phase": "3b",
-  "sub_phase": "3b-1",
+  "sub_phase": "3b-2",
   "last_completed_phase": 1,
-  "last_completed_phase_name": "Phase 3b-1 — Auth foundation (READY for review; live-DB sign-in smoke test pending)",
-  "environment_notes": "Node 20.20.2 via nvm BUT the symlink flaps per-shell (fresh shells = Node 16); run tooling via the ABSOLUTE node path ~/AppData/Roaming/nvm/v20.20.2/node.exe or vitest workers hang. 3b-1 DONE: BetterAuth self-hosted (roles trainer|client), committed migration 0001_betterauth_tables (session renamed auth_session), guards on P2 trainer routes, /login + (app) guard, EXPO_PUBLIC_TRAINER_ID retired (session.user.trainerId). API on zod v4 now (BetterAuth needs ^4). auth-schema.ts HAND-AUTHORED (better-auth CLI unbuildable: better-sqlite3 gyp fail) — cross-checked vs better-auth source; live sign-in vs Postgres is the pending check. API tsc+mobile tsc clean; 186 api tests pass. CORS now credentialed allow-list. 3b-2 NEXT: client dashboard (reuse 3a ProgressCurve), trainer leads/bookings mgmt, PATCH /bookings/:id/status, POST /leads/:id/convert, trainer 'create client login' (trainer-set initial password — user decision). Demo: docker postgres:16.",
+  "last_completed_phase_name": "Phase 3b-2 — Role dashboards + lead/booking management (READY for review; live-DB per-role walkthrough pending). Phase 3 COMPLETE (3a + 3b-1 + 3b-2).",
+  "environment_notes": "Node 20.20.2 via nvm BUT the symlink flaps per-shell (fresh shells = Node 16); run tooling via the ABSOLUTE node path ~/AppData/Roaming/nvm/v20.20.2/node.exe or vitest workers hang. TypeScript pinned ^5.9.0 (installed 5.9.3). 3b-2 DONE + VERIFIED: routes/management.ts (trainer: leads/bookings lists, PATCH status, convert, create-login) + routes/me.ts (client: progress/homework/bookings + PATCH homework); 9 shared DTOs; mobile client dashboard + manage/leads + manage/bookings screens + StatusBadge/HomeworkRow. typecheck all-workspaces exit 0; 226 api tests pass (16 files); no migration (apps/api/drizzle empty); shared pure; no Phase 4 leakage; expo web export exit 0 (31 routes). FIX THIS PASS: removed invalid apps/api/tsconfig.json ignoreDeprecations:'6.0' (TS5103 under TS 5.9.x) that blocked AC-3b-1. PENDING: live-DB per-role walkthrough (docker postgres:16 + db:migrate + db:seed) per README Phase 3b-2 section; 3b-1 live sign-in smoke test is a prerequisite. 4 PHASE NEXT: POST /dogs/:id/summary (Anthropic claude-haiku-4-5), AI spend-cap, multi-tenant SaaS prep.",
   "artifacts": {
-    "REFINED_REQUEST_FILE": null,
-    "CODEBASE_SCAN_FILE": null,
-    "INVESTIGATION_FILE": null,
-    "TECHNICAL_RESEARCH_FILES": [],
-    "PLAN_FILE": null,
+    "REFINED_REQUEST_FILE": "docs/reference/refined-request-phase3.md",
+    "CODEBASE_SCAN_FILE": "docs/reference/codebase-scan-phase3.md",
+    "INVESTIGATION_FILE": "docs/reference/investigation-phase3a.md",
+    "TECHNICAL_RESEARCH_FILES": ["docs/research/expo-router-static-head-sdk54.md"],
+    "PLAN_FILE": "docs/design/plan-004-tailsup-phase3b2-dashboards.md",
     "DESIGN_FILE": "docs/design/project-design.md",
-    "DEPENDENCY_VALIDATION_FILE": null,
-    "TEST_BUILD_REPORT_FILES": []
+    "DEPENDENCY_VALIDATION_FILE": "docs/reference/dependency-validation-phase3a.md",
+    "TEST_BUILD_REPORT_FILES": ["docs/reference/integration-verification-phase3b2.md"]
   },
-  "prior_phases_summary": "P1 foundations; P2 trainer screens (4-tap/timeline/detail+upload); P3a public site + POST /leads + POST /bookings. 173 api tests. design_system.md exists. refined-request-phase3.md already contains a 3b section (written pre-3a).",
+  "prior_phases_summary": "P1 foundations; P2 trainer screens (4-tap/timeline/detail+upload); P3a public site + POST /leads + POST /bookings (173 api tests); P3b-1 BetterAuth foundation (roles trainer|client, migration 0001_betterauth_tables, guards, /login, EXPO_PUBLIC_TRAINER_ID retired, 186->185 api tests, live sign-in smoke test pending); P3b-2 role dashboards + lead/booking mgmt (226 api tests, this checkpoint). Phase 3 COMPLETE. design_system.md + refined-request-phase3.md exist.",
   "phases": []
 }

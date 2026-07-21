@@ -2,6 +2,72 @@
 
 ---
 
+# PHASE 3b-2 — Role dashboards + lead/booking management (integration verification)
+
+Whole-monorepo **integration verification** (2026-07-21, Node v20.20.2 / npm
+10.8.2, TypeScript 5.9.3, Windows 11). Verified against `refined-request-phase3.md`
+(the **Phase 3b** ACs), `plan-004-tailsup-phase3b2-dashboards.md`, and the live
+committed code (`deb3335`). **No live PostgreSQL** (by design, matching the 3a /
+3b-1 checkpoints) — DB-runtime ACs verified via the mocked vitest suite + static
+review; the live per-role walkthrough is a documented manual step. Full report:
+`docs/reference/integration-verification-phase3b2.md`.
+
+**Verdict: READY** (for the user's Phase 3 review — 3b-2 completes Phase 3).
+Gates: `npm run typecheck --workspaces` exit 0 (strict, 0 errors, all 3
+workspaces); **226/226 API tests pass** (16 files; +`management` 24 +`me` 17 over
+3b-1's 185); `git status --porcelain apps/api/drizzle` **empty** (no migration,
+`schema.ts` unchanged); `@tailsup/shared` purity grep clean; no Phase 4 leakage
+(`anthropic`/`claude`/`/summary`/spend-cap/multi-tenant → none); Expo **web
+export** exit 0 (31 routes incl. `/client`, `/manage/leads`, `/manage/bookings`).
+No linter configured (expected). **All 3b-2 ACs met** (AC-3b-1/6/7/8/9/10/11/12/13;
+3b-1's AC-3b-2/3/4/5 not regressed). One working-tree fix was required (see below).
+
+## PHASE 3b-2 (integration) — UNRESOLVED ISSUES
+
+### Critical
+_None._
+
+### Important
+1. **Live-DB per-role walkthrough pending (AC-3b-6/7/8/9/10).** The role-scoped
+   reads/writes were verified by the 41 new endpoint tests (management 24 + me 17,
+   role rejection asserted by request) + static review only — no live PostgreSQL
+   here. Before demo/deploy run the manual steps in `README.md` (Phase 3b-2 →
+   "Seed logins + per-role verify") and `docs/reference/integration-verification-phase3b2.md`
+   §4: Docker Postgres → `db:migrate` (idempotent; no 3b-2 migration) → `db:seed`
+   (creates both logins) → start API → sign in as each role → exercise `/me/*`
+   (client) and the trainer mutations (convert/status/create-login) → confirm each
+   role sees only its own data. 3b-1's live sign-in smoke test is a prerequisite.
+   Confidence high (mocked suite + web export green).
+
+### Minor / follow-ups (non-blocking)
+1. **Deferred dependency advisories (carried from Phases 1/2/3a, unchanged).**
+   3b-2 added **no new runtime dependencies** (routes, DTOs, and screens reuse
+   existing libs) → no new advisories. The pre-existing moderate npm-audit
+   advisories remain deferred — Expo SDK 54 transitive (`postcss`/`uuid`/`js-yaml`
+   in build/test tooling) and `drizzle-kit`→`@esbuild-kit`→`esbuild@~0.18`
+   (GHSA-67mh-4wv8-2f99) — all transitive dev/build tooling, none in the
+   production API or shipped mobile bundle. Resolve before public launch.
+2. **No 3b-1 integration-verification ledger entry exists** (this file jumps 3a →
+   2). Pre-existing gap; 3b-1's verification lives in
+   `docs/reference/integration-verification-phase3b1.md` (its live sign-in smoke
+   test is the one item still pending there). Not a 3b-2 blocker.
+
+## PHASE 3b-2 (integration) — RESOLVED THIS PASS
+1. **API typecheck was broken by an invalid `ignoreDeprecations` value (AC-3b-1).**
+   The 3b-2 commit (`deb3335`) added `"ignoreDeprecations": "6.0"` to
+   `apps/api/tsconfig.json`; TypeScript 5.9.x (the pinned `^5.9.0`) rejects `"6.0"`
+   with `TS5103: Invalid value for '--ignoreDeprecations'` (that value only becomes
+   valid when TS 6.0 ships), so `tsc --noEmit` failed and AC-3b-1 could not pass.
+   Root cause: `tsconfig.base.json` uses no deprecated options and `apps/mobile` /
+   `apps/shared` extend the same base without any `ignoreDeprecations` — the line
+   was both invalid and unnecessary. **Fix:** removed the line (via-negativa,
+   matching the sibling workspaces). All three workspaces now typecheck clean
+   (exit 0) — reconciling the repo with what `README.md` already asserts
+   ("typecheck → clean", "226 pass"). Deviation rule 3 (auto-fix blocker, smallest
+   documented fix).
+
+---
+
 # PHASE 3a — Public business website + POST /leads + POST /bookings (integration verification)
 
 Whole-monorepo **integration verification** (2026-06-21, Node v20.20.2 / npm

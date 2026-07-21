@@ -8,7 +8,6 @@
   // (a typecheck gate); no JS is emitted because the runtime is tsx.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "types": ["node"],
     "noEmit": true
   },
