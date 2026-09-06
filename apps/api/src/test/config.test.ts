@@ -2,6 +2,9 @@
 //
 // The config module is an env-validated reader. It THROWS on any missing
 // required variable at module load time (fail-fast / no-silent-fallback rule).
+// The required set is DATABASE_URL, DEFAULT_TRAINER_ID and CORS_ORIGINS; the
+// baseline values come from src/test/setup.ts and each test deletes or
+// overrides the one it is exercising.
 // PORT is the only intentionally optional var (defaults to 3000 via the `??`
 // operator in the module — no throw for PORT absence).
 //
@@ -50,6 +53,42 @@ describe('config.ts — environment validation', () => {
     await expect(import('../config.js')).rejects.toThrow(
       'Missing required environment variable: DATABASE_URL',
     );
+  });
+
+  it('throws when DEFAULT_TRAINER_ID is absent', async () => {
+    delete process.env.DEFAULT_TRAINER_ID;
+
+    await expect(import('../config.js')).rejects.toThrow(
+      'Missing required environment variable: DEFAULT_TRAINER_ID',
+    );
+  });
+
+  it('throws when CORS_ORIGINS is absent', async () => {
+    delete process.env.CORS_ORIGINS;
+
+    await expect(import('../config.js')).rejects.toThrow(
+      'Missing required environment variable: CORS_ORIGINS',
+    );
+  });
+
+  it('exports DEFAULT_TRAINER_ID as config.defaultTrainerId', async () => {
+    vi.resetModules();
+    const trainerId = '11111111-2222-3333-4444-555555555555';
+    process.env.DEFAULT_TRAINER_ID = trainerId;
+
+    const mod = await import('../config.js');
+    expect(mod.config.defaultTrainerId).toBe(trainerId);
+  });
+
+  it('splits CORS_ORIGINS on commas, trimming whitespace and empty entries', async () => {
+    vi.resetModules();
+    process.env.CORS_ORIGINS = ' https://tailsup.app , http://localhost:8081 ,, ';
+
+    const mod = await import('../config.js');
+    expect(mod.config.corsOrigins).toEqual([
+      'https://tailsup.app',
+      'http://localhost:8081',
+    ]);
   });
 
   it('exports the DATABASE_URL value as config.databaseUrl when present', async () => {

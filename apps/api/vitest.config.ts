@@ -7,6 +7,9 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
+    // Sets the required env vars before any module (and therefore config.ts,
+    // which throws on a missing one) is evaluated.
+    setupFiles: ['./src/test/setup.ts'],
     // Treat unhandled promise rejections as test failures.
     dangerouslyIgnoreUnhandledErrors: false,
     // Isolate each test file so module-level side-effects (config reads) do

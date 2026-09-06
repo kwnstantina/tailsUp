@@ -64,10 +64,11 @@ vi.mock('../db/client.js', () => ({
 }));
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { app } from '../app.js';
+// config.ts' required() vars (DATABASE_URL, DEFAULT_TRAINER_ID, CORS_ORIGINS)
+// are set in src/test/setup.ts — an assignment here would run AFTER the
+// hoisted `import { app }` has already evaluated config.ts.
 
-// Satisfy config.ts' required() check (runs when client.ts imports config.ts).
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+import { app } from '../app.js';
 
 // Helper: build a JSON POST request to the events endpoint.
 function postEvent(sessionId: string, body: Record<string, unknown>) {

@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx src/seed.ts",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
@@ -21,13 +22,13 @@
     "drizzle-orm": "^0.45.0",
     "hono": "^4.12.0",
     "pg": "^8.13.0",
+    "tsx": "^4.19.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.31.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0",
     "@vitest/coverage-v8": "^3.2.0"
