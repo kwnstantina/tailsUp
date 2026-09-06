@@ -4,10 +4,15 @@ TailsUp is a data-driven dog-training platform. A trainer records structured
 behavior data during sessions (a fast 4-tap log), clients track their dog's
 progress and homework, a public website captures leads and bookings, and cheap
 AI summaries report on progress — with the structured behavior data as the
-long-term proprietary dataset moat. **This repository is Phase 1 (Foundations):**
-an npm-workspaces monorepo with the full database schema, two API endpoints, a
-mobile connectivity screen, environment scaffolding, and an automated daily
-database backup. Later phases are not built yet (see [Phase boundary](#phase-boundary)).
+long-term proprietary dataset moat.
+
+**What is built:** an npm-workspaces monorepo with the full database schema, an
+automated daily database backup, and environment scaffolding (Phase 1), plus the
+**public website** — Home, About, Services, Results, Contact and Booking, served
+from the same Expo codebase as the app — with its two capture endpoints
+`POST /leads` and `POST /bookings` (part of Phase 3). Auth, the client dashboard
+and the trainer views are **not** built yet
+(see [Phase boundary](#phase-boundary)).
 
 ## Monorepo layout
 
@@ -132,11 +137,23 @@ Expected: HTTP 201 with the created `BehaviorEventDTO`. Behavior to expect:
 - `intervention` omitted **and** the dog has no protocol default → **400**
   (`intervention` is never null — it is the dataset moat).
 
-## Run the mobile app
+## Run the site / mobile app
 
-The Expo Router app proves app↔API connectivity by calling `GET /health`.
+`apps/mobile` is one Expo Router codebase serving **both** the public website
+(web) and the app (iOS/Android) — there is no separate Next.js project.
+
+| Route            | What it is                                            |
+| ---------------- | ----------------------------------------------------- |
+| `/`              | Home                                                  |
+| `/about`         | About the practice                                    |
+| `/services`      | The three session types + the tracking service        |
+| `/results`       | Threshold-over-time proof, and how the data is logged |
+| `/contact`       | Lead form → `POST /leads`                             |
+| `/booking`       | Booking request → `POST /bookings`                    |
+| `/debug/health`  | The Phase 1 `GET /health` connectivity screen (AC-9)  |
+
 Set the API base URL via `EXPO_PUBLIC_API_URL` (in `apps/mobile/.env`), then
-start the web target (sufficient for Phase 1 verification):
+start the web target:
 
 ```bash
 # apps/mobile/.env
@@ -150,8 +167,36 @@ npm run web -w apps/mobile         # Expo web build
 > the dev menu for iOS/Android/web). If `-w apps/mobile` does not resolve a
 > script in your environment, use the `cd apps/mobile && npm run <script>` form.
 
-With the API running, the screen shows a "Connected" state with the `/health`
-payload. Stop the API and reload to see the clear failure state.
+With the API running, `/debug/health` shows a "Connected" state with the
+`/health` payload. Stop the API and reload to see the clear failure state.
+
+### Before the forms will work
+
+Both public forms write to the database, so the API needs two things set in
+`.env` (see `.env.example`):
+
+- **`DEFAULT_TRAINER_ID`** — a real `trainer.id`. Public captures have no
+  authenticated actor, and `lead.trainerId` / `booking.trainerId` are NOT NULL,
+  so the owning trainer is resolved from config rather than from the request
+  body. Insert a trainer row first; a bad id fails the foreign key on submit.
+- **`CORS_ORIGINS`** — must include the origin the site is served from. The
+  shipped default covers Expo web in dev (`http://localhost:8081`); add your
+  deployed site origin before going live. It is never `*`, or any site could
+  post leads to this practice.
+
+### Building the site for deployment
+
+```bash
+cd apps/mobile && npx expo export -p web    # static site into apps/mobile/dist
+```
+
+`app.json` sets `web.output: "static"`, so every route is pre-rendered to HTML
+at build time — the marketing copy is in the served HTML rather than injected by
+JavaScript, which is what a lead-capture site needs for search and link
+previews. If a page ever exports at a uniform ~17 kB with an empty
+`<div id="root">`, something in the tree is returning `null` during the Node
+pre-render (the root layout's font gate did exactly this — hence the
+`Platform.OS !== 'web'` guard in `app/_layout.tsx`).
 
 ### Dev networking matrix
 
@@ -197,17 +242,32 @@ To run the backup manually once secrets are set: open the **Actions** tab →
 
 ## Phase boundary
 
-This is **Phase 1 — Foundations**. The schema covers all 11 entities, but only
-two endpoints are implemented: **`GET /health`** and
-**`POST /sessions/:id/events`** (AC-12). The following are intentionally **NOT**
-built yet:
+The schema covers all 11 entities. Four endpoints are implemented:
+**`GET /health`**, **`POST /sessions/:id/events`** (Phase 1), and
+**`POST /leads`** + **`POST /bookings`** (the public site's capture, Phase 3).
+
+The following are intentionally **NOT** built yet:
 
 - **Phase 2 — Trainer view:** 4-tap quick-logging UI, post-session detail
   (note/tags/video upload via R2 presign), dog timeline, `POST /media/presign`.
-- **Phase 3 — Public site + Client view:** website pages (Home, About,
-  Services, Results, Contact + lead form, Booking), BetterAuth with
-  `trainer`/`client` roles, client dashboard, and the lead/booking endpoints
-  (`POST /leads`, `POST /bookings`, `PATCH /bookings/:id/status`,
-  `POST /leads/:id/convert`).
+- **Phase 3 remainder — Client view:** BetterAuth with `trainer`/`client` roles,
+  the client dashboard (threshold-over-time graph, homework, reminders), the
+  trainer's lead/booking management, and the endpoints those need
+  (`PATCH /bookings/:id/status`, `POST /leads/:id/convert`).
 - **Phase 4 — AI & scale:** `POST /dogs/:id/summary` (Anthropic
   claude-haiku-4-5), AI spend-cap reminders, multi-tenant SaaS prep.
+
+### Known gaps in the shipped site
+
+- **Booking times are not live availability.** There is no availability endpoint
+  until the trainer view exists, so the calendar offers the practice's usual
+  weekday slots and the visitor is making a *request*. The page says so; do not
+  present it as a confirmed slot.
+- **All business facts are placeholders.** Prices, address, opening hours, the
+  trainer's name and the credential all still read `[LIKE THIS]`. They live in
+  one file — `apps/mobile/src/content/site.ts` — so filling them in once updates
+  every page.
+- **Photos are marked empty frames**, not stock imagery. The "crew" strip on the
+  home page additionally needs owner permission before real photos go up.
+- **The progress curves are sample data**, labelled as such on every page they
+  appear. Real client curves need the client dashboard.

@@ -1,300 +1,321 @@
-// =============================================================================
-// TailsUp /health connectivity screen (Phase 1, Unit C — AC-9)
+// Home — the journey the business actually needs: who we are → what we do →
+// the thing nobody else does → leave a lead.
 //
-// Proves app -> API connectivity by calling GET {API_URL}/health and rendering
-// the result. Imports HealthDTO from @tailsup/shared to (a) type the response
-// and (b) prove the shared workspace package resolves from the Expo app.
-//
-// -----------------------------------------------------------------------------
-// METRO MONOREPO NOTE (fallback — do NOT add preemptively):
-// Expo SDK 54 auto-configures Metro for npm workspaces, so this app ships with
-// NO metro.config.js. If `@tailsup/shared` fails to resolve at bundle time
-// ("Unable to resolve module @tailsup/shared"), create apps/mobile/metro.config.js
-// with EXACTLY this content, then restart the bundler:
-//
-//   const { getDefaultConfig } = require('expo/metro-config');
-//   const path = require('path');
-//
-//   const projectRoot = __dirname;
-//   const workspaceRoot = path.resolve(projectRoot, '../..');
-//
-//   const config = getDefaultConfig(projectRoot);
-//   // 1) Watch the whole monorepo so changes in packages/shared trigger reload.
-//   config.watchFolders = [workspaceRoot];
-//   // 2) Resolve from the app's node_modules first, then the hoisted root's.
-//   config.resolver.nodeModulesPaths = [
-//     path.resolve(projectRoot, 'node_modules'),
-//     path.resolve(workspaceRoot, 'node_modules'),
-//   ];
-//
-//   module.exports = config;
-//
-// (Do NOT add stale `extraNodeModules` / `disableHierarchicalLookup` — SDK 52+
-// guidance drops those when relying on auto-config.)
-// =============================================================================
+// The data-driven tracking is ONE section here, not the headline. The homepage
+// sells a dog trainer; the platform is the reason to pick this one.
 
-import { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
+import { colors, radii, space } from '../src/design/tokens';
+import { useBreakpoint } from '../src/design/useBreakpoint';
+import { crew, practice, sampleCurve, services, trustClaims } from '../src/content/site';
+import { Col, Container, Grid, Section, Stack, Wrap } from '../src/components/Layout';
+import { Page } from '../src/components/Page';
+import { Body, BodyLg, H1, H2, H3, Label, Small } from '../src/components/Type';
 import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import type { HealthDTO } from '@tailsup/shared';
+  Button,
+  Card,
+  Eyebrow,
+  Highlight,
+  IconBubble,
+  Sticker,
+  TINTS,
+} from '../src/components/Ui';
+import { CirclePhoto, PhotoPlaceholder, Wave } from '../src/components/Media';
+import { ProgressCurve } from '../src/components/ProgressCurve';
+import { LeadForm } from '../src/components/LeadForm';
+import {
+  IconMagnifier,
+  IconPair,
+  IconTrio,
+  Paw,
+} from '../src/components/Icons';
 
-// Read the API base URL via STATIC dot-access only — Expo inlines EXPO_PUBLIC_*
-// at build time and ONLY when accessed this way (no destructuring / dynamic keys).
-// Dev default: localhost:3000 (correct for Expo web & iOS simulator). For an
-// Android emulator use http://10.0.2.2:3000 and for a physical device the host
-// LAN IP — see apps/mobile/.env.example for the full networking matrix.
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const SERVICE_ICONS = [IconMagnifier, IconPair, IconTrio];
 
-type Status =
-  | { kind: 'loading' }
-  | { kind: 'success'; data: HealthDTO }
-  | { kind: 'error'; message: string };
-
-export default function HealthScreen() {
-  const [status, setStatus] = useState<Status>({ kind: 'loading' });
-
-  const checkHealth = useCallback(async () => {
-    setStatus({ kind: 'loading' });
-    try {
-      const res = await fetch(`${API_URL}/health`);
-      if (!res.ok) {
-        setStatus({
-          kind: 'error',
-          message: `API responded with HTTP ${res.status}`,
-        });
-        return;
-      }
-      const data = (await res.json()) as HealthDTO;
-      setStatus({ kind: 'success', data });
-    } catch {
-      // Network-level failure (server down, wrong host, CORS, etc.)
-      setStatus({ kind: 'error', message: 'API unreachable' });
-    }
-  }, []);
-
-  useEffect(() => {
-    void checkHealth();
-  }, [checkHealth]);
+export default function HomeScreen() {
+  const r = useBreakpoint();
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>API Health Check</Text>
-        <Text style={styles.subheading}>Proving app to API connectivity</Text>
+    <Page>
+      {/* ------------------------------------------------------------ Hero */}
+      <Section spacing="normal">
+        <Grid gap={r.isPhone ? space.lg : space.xl} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Eyebrow>{`Force-free dog training in ${practice.city}`}</Eyebrow>
 
-        <View style={styles.endpointBox}>
-          <Text style={styles.endpointLabel}>Endpoint</Text>
-          <Text style={styles.endpointValue}>{`${API_URL}/health`}</Text>
-        </View>
+              <View style={{ gap: 2 }}>
+                <H1>Happy dogs,</H1>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Highlight>
+                    <H1>happier</H1>
+                  </Highlight>
+                  <H1>walks.</H1>
+                </View>
+              </View>
 
-        {status.kind === 'loading' && <LoadingState />}
-        {status.kind === 'success' && <SuccessState data={status.data} />}
-        {status.kind === 'error' && <ErrorState message={status.message} />}
+              <BodyLg style={{ maxWidth: 490 }}>
+                Barking, lunging, pulling on the lead, or just a bit much on a Tuesday morning?
+                We&rsquo;ll work it out together — at your dog&rsquo;s pace, with far less stress
+                than you&rsquo;re expecting.
+              </BodyLg>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => void checkHealth()}
-          disabled={status.kind === 'loading'}
-          style={({ pressed }) => [
-            styles.button,
-            status.kind === 'loading' && styles.buttonDisabled,
-            pressed && styles.buttonPressed,
-          ]}
+              <View
+                style={{
+                  flexDirection: r.isPhone ? 'column' : 'row',
+                  gap: space.sm,
+                  marginTop: 4,
+                }}
+              >
+                <Button label="Book a first hello" href="/booking" block={r.isPhone} />
+                <Button
+                  label="See what we do"
+                  href="/services"
+                  variant="secondary"
+                  block={r.isPhone}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: radii.pill,
+                    backgroundColor: colors.primary,
+                  }}
+                />
+                <Label color={colors.textMuted}>{`We usually reply ${practice.replyTime}.`}</Label>
+              </View>
+            </Stack>
+          </Col>
+
+          <Col weight={1}>
+            <View style={{ position: 'relative' }}>
+              {/*
+                Decorative shapes behind the photo. Hidden with `display` rather
+                than a conditional so the tree stays identical between the
+                pre-rendered HTML and the hydrated client (see SiteHeader).
+              */}
+              <View
+                style={{
+                  display: r.isPhone ? 'none' : 'flex',
+                  position: 'absolute',
+                  left: -10,
+                  top: 40,
+                  width: 150,
+                  height: 150,
+                  borderRadius: radii.pill,
+                  backgroundColor: colors.mint,
+                }}
+              />
+              <View
+                style={{
+                  display: r.isPhone ? 'none' : 'flex',
+                  position: 'absolute',
+                  right: 24,
+                  top: -34,
+                  width: 92,
+                  height: 92,
+                  borderRadius: radii.pill,
+                  backgroundColor: colors.coral,
+                  opacity: 0.85,
+                }}
+              />
+              <PhotoPlaceholder
+                label="[PHOTO — a very pleased dog, mid-walk]"
+                height={r.isPhone ? 260 : 440}
+                tint="peach"
+                style={r.isPhone ? undefined : { width: '92%', alignSelf: 'flex-end' }}
+              />
+            </View>
+          </Col>
+        </Grid>
+      </Section>
+
+      <Wave color={colors.bgAlt} height={r.isPhone ? 36 : 64} />
+
+      {/* -------------------------------------------------------- Stickers */}
+      <View style={{ backgroundColor: colors.bgAlt }}>
+        <Container style={{ paddingTop: space.xs, paddingBottom: space.lg }}>
+          <Wrap gap={14} justify={r.isPhone ? 'flex-start' : 'center'}>
+            {trustClaims.map((claim, i) => (
+              <Sticker
+                key={claim.label}
+                label={claim.label}
+                tint={claim.tint}
+                tick={claim.tick}
+                // Alternating tilt, never past 2° — beyond that it reads broken
+                // rather than deliberate.
+                rotate={i % 2 === 0 ? -1.5 : 1.3}
+              />
+            ))}
+          </Wrap>
+        </Container>
+      </View>
+
+      {/* ------------------------------------------------------------ Crew */}
+      <Section background={colors.bgAlt} spacing="tight">
+        <Stack gap={space.md}>
+          <View
+            style={{
+              flexDirection: r.isPhone ? 'column' : 'row',
+              alignItems: r.isPhone ? 'flex-start' : 'flex-end',
+              justifyContent: 'space-between',
+              gap: space.sm,
+            }}
+          >
+            <Stack gap={10}>
+              <Eyebrow>Some of the crew</Eyebrow>
+              <H2>Dogs we&rsquo;ve worked with</H2>
+            </Stack>
+          </View>
+
+          <Grid gap={r.isPhone ? space.md : 20}>
+            {crew.map((member, i) => (
+              <Col key={`${member.name}-${i}`}>
+                <CirclePhoto name={member.name} caption={member.workedOn} tint={member.tint} />
+              </Col>
+            ))}
+          </Grid>
+        </Stack>
+      </Section>
+
+      {/* -------------------------------------------------------- Services */}
+      <Section spacing="normal">
+        <Stack gap={space.lg}>
+          <Stack gap={10} style={{ alignItems: r.isPhone ? 'flex-start' : 'center' }}>
+            <Eyebrow>What we do</Eyebrow>
+            <H2 style={{ textAlign: r.isPhone ? 'left' : 'center' }}>Three ways to start</H2>
+            <BodyLg
+              color={colors.textMuted}
+              style={{ maxWidth: 560, textAlign: r.isPhone ? 'left' : 'center' }}
+            >
+              Not sure which one? Send us a note describing the chaos — we&rsquo;ll tell you
+              honestly where to begin.
+            </BodyLg>
+          </Stack>
+
+          <Grid>
+            {services.map((service, i) => {
+              const Icon = SERVICE_ICONS[i] ?? IconMagnifier;
+              const tint = service.tint;
+              return (
+                <Col key={service.type}>
+                  <Card tint={tint} style={{ flex: 1, gap: space.sm }}>
+                    <IconBubble>
+                      <Icon size={28} color={TINTS[tint].iconInk} />
+                    </IconBubble>
+                    <H3>{service.title}</H3>
+                    <Body color={TINTS[tint].ink}>{service.summary}</Body>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: 'auto',
+                        paddingTop: space.md,
+                        gap: space.sm,
+                      }}
+                    >
+                      <Label style={{ fontSize: 18 }}>{service.price}</Label>
+                      <Button label="Book it" href="/booking" variant="green" size="small" />
+                    </View>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Grid>
+        </Stack>
+      </Section>
+
+      {/* ------------------------------------------------- The proof band */}
+      <Container style={{ paddingBottom: r.isPhone ? space.xl : space.xxl }}>
+        <View
+          style={{
+            backgroundColor: colors.primaryDeep,
+            borderRadius: radii.band,
+            padding: r.isPhone ? 26 : 56,
+          }}
         >
-          <Text style={styles.buttonText}>
-            {status.kind === 'loading' ? 'Checking…' : 'Re-check'}
-          </Text>
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
+          <Grid gap={r.isPhone ? space.lg : space.xl} align="center">
+            <Col weight={1}>
+              <Stack gap={space.md}>
+                <Eyebrow color={colors.highlight}>The bit nobody else does</Eyebrow>
+                <H2 color={colors.onDark}>You get to watch it work</H2>
+                <BodyLg color={colors.onDarkMuted} style={{ maxWidth: 470 }}>
+                  Every session we tap out what actually happened — what set your dog off, how
+                  close they could get, how quickly they came back down. Four taps. It takes
+                  nothing away from the session.
+                </BodyLg>
+                <BodyLg color={colors.onDarkMuted} style={{ maxWidth: 470 }}>
+                  A few weeks in, it turns into this. Handy on the days it feels like nothing is
+                  changing.
+                </BodyLg>
+                <Button
+                  label="Show me a real one"
+                  href="/results"
+                  style={{ marginTop: 6 }}
+                  block={r.isPhone}
+                />
+              </Stack>
+            </Col>
+
+            <Col weight={1}>
+              <View
+                style={{
+                  backgroundColor: colors.bg,
+                  borderRadius: radii.card - 4,
+                  padding: r.isPhone ? 20 : 28,
+                  gap: 14,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: space.xs,
+                  }}
+                >
+                  <H3 numberOfLines={1} style={{ flex: 1 }}>
+                    [DOG NAME]&rsquo;s twelve weeks
+                  </H3>
+                  <Label color={colors.accentInk}>2 m → 14 m</Label>
+                </View>
+                <ProgressCurve data={sampleCurve} />
+                <Small>
+                  How close another dog could get before [DOG NAME] reacted. Sample data.
+                </Small>
+              </View>
+            </Col>
+          </Grid>
+        </View>
+      </Container>
+
+      {/* ------------------------------------------------------ Lead capture */}
+      <Section background={colors.bgAlt} spacing="normal">
+        <Grid gap={r.isPhone ? space.lg : space.xl} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <H2>So, tell us about your dog.</H2>
+              <BodyLg color={colors.textMuted} style={{ maxWidth: 450 }}>
+                A few sentences is plenty. Whatever they&rsquo;re doing, we&rsquo;ve almost
+                certainly met it before — and nothing you write here is going to shock us.
+              </BodyLg>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                <Paw size={22} />
+                <Label>No newsletter. No drip campaign. Just a reply.</Label>
+              </View>
+            </Stack>
+          </Col>
+          <Col weight={1}>
+            <Card tint="white">
+              <LeadForm variant="compact" />
+            </Card>
+          </Col>
+        </Grid>
+      </Section>
+    </Page>
   );
 }
-
-function LoadingState() {
-  return (
-    <View style={[styles.card, styles.cardNeutral]}>
-      <ActivityIndicator color="#2563eb" />
-      <Text style={styles.cardTitle}>Contacting the API…</Text>
-    </View>
-  );
-}
-
-function SuccessState({ data }: { data: HealthDTO }) {
-  // The API may return { status: 'ok', db: 'up' } or a degraded
-  // { status: 'degraded', db: 'down' } — both are a successful round-trip
-  // (the API answered). Surface the difference clearly.
-  const healthy = data.status === 'ok';
-  return (
-    <View style={[styles.card, healthy ? styles.cardSuccess : styles.cardWarning]}>
-      <Text style={styles.cardTitle}>
-        {healthy ? '✓ Connected' : '⚠ Connected — degraded'}
-      </Text>
-      <Text style={styles.cardBody}>
-        The API responded over HTTP. App to API connectivity is proven.
-      </Text>
-
-      <View style={styles.kvRow}>
-        <Text style={styles.kvKey}>status</Text>
-        <Text style={styles.kvValue}>{data.status}</Text>
-      </View>
-      <View style={styles.kvRow}>
-        <Text style={styles.kvKey}>db</Text>
-        <Text style={styles.kvValue}>{data.db ?? '(not reported)'}</Text>
-      </View>
-
-      <Text style={styles.payloadLabel}>Raw payload</Text>
-      <Text style={styles.payload}>{JSON.stringify(data, null, 2)}</Text>
-    </View>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <View style={[styles.card, styles.cardError]}>
-      <Text style={styles.cardTitle}>✕ Cannot reach API</Text>
-      <Text style={styles.cardBody}>{message}</Text>
-      <Text style={styles.hint}>
-        Is the API running on {API_URL}? On an Android emulator use
-        http://10.0.2.2:3000; on a physical device use your machine&apos;s LAN IP
-        (see .env.example). Then tap Re-check.
-      </Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  container: {
-    padding: 20,
-    gap: 16,
-    maxWidth: 560,
-    width: '100%',
-    alignSelf: 'center',
-    ...Platform.select({ web: { minHeight: '100%' as unknown as number }, default: {} }),
-  },
-  heading: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  subheading: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: -8,
-  },
-  endpointBox: {
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    padding: 12,
-  },
-  endpointLabel: {
-    color: '#94a3b8',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  endpointValue: {
-    color: '#e2e8f0',
-    fontSize: 14,
-    marginTop: 4,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-  },
-  card: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    gap: 8,
-  },
-  cardNeutral: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cardSuccess: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#86efac',
-  },
-  cardWarning: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fcd34d',
-  },
-  cardError: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fca5a5',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  cardBody: {
-    fontSize: 14,
-    color: '#334155',
-  },
-  kvRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(15,23,42,0.08)',
-    paddingTop: 6,
-  },
-  kvKey: {
-    fontSize: 14,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  kvValue: {
-    fontSize: 14,
-    color: '#0f172a',
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-  },
-  payloadLabel: {
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    color: '#64748b',
-    marginTop: 8,
-  },
-  payload: {
-    fontSize: 13,
-    color: '#0f172a',
-    backgroundColor: 'rgba(15,23,42,0.05)',
-    borderRadius: 8,
-    padding: 10,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-  },
-  hint: {
-    fontSize: 13,
-    color: '#7f1d1d',
-  },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  buttonPressed: {
-    backgroundColor: '#1d4ed8',
-  },
-  buttonDisabled: {
-    backgroundColor: '#93c5fd',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
