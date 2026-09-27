@@ -23,8 +23,9 @@ vi.mock('../db/client.js', () => ({
   db: { execute: mocks.mockExecute },
 }));
 
-// Satisfy config.ts' required() check (runs at import of client.ts → config.ts).
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+// config.ts' required() vars (DATABASE_URL, AUTH_SECRET) are set in
+// src/test/setup.ts — an assignment here would run AFTER the hoisted
+// `import { app }` has already evaluated config.ts.
 
 // Phase 3b: mock BetterAuth so real auth isn't constructed (public routes ignore the session).
 vi.mock('../lib/auth.js', () => import('./authMock.js'));
