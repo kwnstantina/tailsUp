@@ -23,9 +23,12 @@ vi.mock('../db/client.js', () => ({
   db: { execute: mocks.mockExecute },
 }));
 
-// config.ts' required() vars (DATABASE_URL, DEFAULT_TRAINER_ID, CORS_ORIGINS)
-// are set in src/test/setup.ts — an assignment here would run AFTER the
-// hoisted `import { app }` has already evaluated config.ts.
+// config.ts' required() vars (DATABASE_URL, AUTH_SECRET) are set in
+// src/test/setup.ts — an assignment here would run AFTER the hoisted
+// `import { app }` has already evaluated config.ts.
+
+// Phase 3b: mock BetterAuth so real auth isn't constructed (public routes ignore the session).
+vi.mock('../lib/auth.js', () => import('./authMock.js'));
 
 import { app } from '../app.js';
 

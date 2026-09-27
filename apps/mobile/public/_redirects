@@ -1,0 +1,26 @@
+# Cloudflare Pages routing for the Expo Router static export.
+# Expo copies everything in apps/mobile/public/ to the export root, so this file
+# ships with `npx expo export -p web` automatically.
+#
+# WHY THIS FILE EXISTS
+# `web.output: "static"` pre-renders one HTML file per route, but a DYNAMIC route
+# can only be pre-rendered as its literal bracket filename:
+#     events/[id].html      dogs/[id]/timeline.html      sessions/[id]/log.html
+# A real request for /events/8f3c-... matches no file on disk -> hard 404, and the
+# client router never gets a chance to run. These rules rewrite (200 = serve, do
+# NOT redirect — the URL in the address bar is preserved, which the client router
+# reads to pick the route) each dynamic path to the app shell.
+#
+# WHY /app-shell.html AND NOT THE BRACKET FILE
+# All (app) routes export as one BYTE-IDENTICAL client shell, so any of them
+# serves. scripts/post-export.mjs copies that shell to a bracket-free
+# /app-shell.html: square brackets in a _redirects destination are not documented
+# as supported by Cloudflare, and a bracket-free path removes the question.
+#
+# ORDERING: every rule below is a specific path, never a catch-all splat, so none
+# of them can shadow a real pre-rendered page (notably the marketing pages, which
+# must keep serving their own pre-rendered HTML for search + link previews).
+
+/events/:id             /app-shell.html   200
+/dogs/:id/timeline      /app-shell.html   200
+/sessions/:id/log       /app-shell.html   200
