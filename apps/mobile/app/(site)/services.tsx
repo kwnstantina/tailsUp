@@ -1,114 +1,84 @@
 // =============================================================================
 // (site)/services.tsx — Services / Υπηρεσίες  (route: /services)
 //
-// The service catalogue as peer Cards mapped to BOOKING_TYPES — Αξιολόγηση
-// (assessment), Ιδιαίτερα (private), Ομαδικά (group) — plus a board-and-train
-// offering. The DATA-DRIVEN PROGRESS TRACKING appears HERE as ONE premium
-// service, featured with the ProgressCurve (representative threshold-over-time
-// data) inside a dark ProofBand — the page's single bold moment (DS-4/DS-6).
+// The full catalogue: the four programmes as tinted cards, each with its icon,
+// the longer pitch and a ticked "what you leave with" list — then the
+// data-driven tracking as the page's ONE bold moment, in the deep-green band
+// with the ProgressCurve.
 //
-// This is the ONLY page that renders the ProgressCurve (DS-5).
-// Per-service CTAs route to /booking. Bilingual via useLang().
+// The service copy itself lives in lib/site-content.ts, shared with the home
+// teaser, so a price or a title is written once.
 // =============================================================================
 
 import Head from 'expo-router/head';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Eyebrow, PrimaryButton, ProofBand, Section, SecondaryButton } from '../../components/ui';
+import {
+  Bullet,
+  Card,
+  Col,
+  Eyebrow,
+  Grid,
+  HeadlineRow,
+  Highlight,
+  IconBubble,
+  IconMagnifier,
+  IconPair,
+  IconRising,
+  IconTrio,
+  PrimaryButton,
+  ProofBand,
+  Section,
+  Stack,
+  TINTS,
+  Wave,
+} from '../../components/ui';
 import { ProgressCurve } from '../../components/ProgressCurve';
-import { colors, fontFallback, space, type, useResponsive } from '../../lib/theme';
+import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { sampleCurve, services } from '../../lib/site-content';
 
-// Representative threshold-over-time data for the tracking-service curve. Higher
-// thresholdMeters = the dog stays calm closer to a trigger = better outcome, so
-// the line rises over the weeks. Clearly illustrative sample data (not a claim).
-const SAMPLE_CURVE: { occurredAt: string; thresholdMeters: number }[] = [
-  { occurredAt: '2026-01-06', thresholdMeters: 3 },
-  { occurredAt: '2026-01-20', thresholdMeters: 4 },
-  { occurredAt: '2026-02-03', thresholdMeters: 4 },
-  { occurredAt: '2026-02-17', thresholdMeters: 6 },
-  { occurredAt: '2026-03-03', thresholdMeters: 7 },
-  { occurredAt: '2026-03-17', thresholdMeters: 9 },
-  { occurredAt: '2026-03-31', thresholdMeters: 11 },
-  { occurredAt: '2026-04-14', thresholdMeters: 14 },
-];
+// Same order as `services` in site-content.
+const SERVICE_ICONS = [IconMagnifier, IconPair, IconTrio, IconRising];
 
 const copy = {
   el: {
     head: {
       title: 'Υπηρεσίες — TailsUp',
-      desc: 'Αξιολόγηση, ατομικά και ομαδικά μαθήματα, εντατικό πρόγραμμα και δομημένη παρακολούθηση προόδου.',
+      desc: 'Πρώτη γνωριμία, ιδιαίτερα και ομαδικά μαθήματα, εντατικό πρόγραμμα — και καταγραφή προόδου σε δεδομένα.',
     },
     eyebrow: 'Υπηρεσίες',
-    title: 'Προγράμματα για κάθε σκύλο — και κάθε στόχο.',
-    intro:
-      'Κάθε πρόγραμμα ξεκινά από μια ολοκληρωμένη αξιολόγηση και εξελίσσεται με σαφή δομή. Διαλέξτε το σημείο εκκίνησης που σας ταιριάζει.',
-    services: [
-      {
-        name: 'Αξιολόγηση',
-        body: 'Μια πρώτη, σε βάθος συνεδρία: γνωριμία, καταγραφή συμπεριφοράς και ένα ξεκάθαρο πλάνο επόμενων βημάτων.',
-        cta: 'Κλείσε αξιολόγηση',
-      },
-      {
-        name: 'Ιδιαίτερα μαθήματα',
-        body: 'Εξατομικευμένη δουλειά ένας-προς-έναν, με ρυθμό προσαρμοσμένο στον σκύλο σας και στους στόχους σας.',
-        cta: 'Κλείσε ραντεβού',
-      },
-      {
-        name: 'Ομαδικά μαθήματα',
-        body: 'Δομημένη εξάσκηση σε μικρές ομάδες, για κοινωνικοποίηση και αυτοσυγκράτηση σε ελεγχόμενο περιβάλλον.',
-        cta: 'Κλείσε ραντεβού',
-      },
-      {
-        name: 'Εντατικό πρόγραμμα',
-        body: 'Πιο πυκνές συνεδρίες για σύνθετες συμπεριφορές, με στενή καθοδήγηση και συχνή επανεκτίμηση.',
-        cta: 'Μάθε περισσότερα',
-      },
-    ],
-    trackingEyebrow: 'Premium υπηρεσία',
-    trackingTitle: 'Δομημένη παρακολούθηση προόδου',
+    title: { line1: 'Τέσσερις τρόποι να', mark: 'ξεκινήσετε', line2: 'σωστά.' },
+    lead:
+      'Όλα ξεκινούν από την πρώτη γνωριμία — εκεί καταλαβαίνουμε τι συμβαίνει πραγματικά. Από κει και πέρα, διαλέγετε ρυθμό.',
+    outcomesTitle: 'Φεύγετε με:',
+    cardCta: 'Κλείσ’ το',
+    trackingEyebrow: 'Περιλαμβάνεται σε κάθε πρόγραμμα',
+    trackingTitle: 'Η πρόοδος, σε νούμερα',
     trackingBody:
-      'Σε κάθε συνεδρία καταγράφουμε τη συμπεριφορά ως δεδομένα: απόσταση από το ερέθισμα, ένταση, έκβαση και παρέμβαση. Έτσι η πρόοδος γίνεται ορατή — μια καμπύλη που ανεβαίνει με τις εβδομάδες, όχι μια εντύπωση.',
-    curveCaption: 'Ενδεικτικά δεδομένα: το όριο ανοχής (μέτρα) αυξάνεται με τον χρόνο.',
-    trackingCta: 'Κλείσε αξιολόγηση',
+      'Σε κάθε συνεδρία καταγράφουμε τη συμπεριφορά ως δεδομένα: απόσταση από το ερέθισμα, ένταση, έκβαση, παρέμβαση. Τέσσερα χτυπήματα στην οθόνη — και μετά από λίγες εβδομάδες έχετε μια καμπύλη αντί για μια εντύπωση.',
+    trackingNote: 'Δεν χρεώνεται ξεχωριστά. Είναι απλώς ο τρόπος που δουλεύουμε.',
+    curveCaption: 'Ενδεικτικά δεδομένα: το όριο ανοχής (μέτρα) ανεβαίνει με τις εβδομάδες.',
+    trackingCta: 'Κλείσε την πρώτη γνωριμία',
   },
   en: {
     head: {
       title: 'Services — TailsUp',
-      desc: 'Assessment, private and group lessons, an intensive programme, and structured progress tracking.',
+      desc: 'A first hello, private and group sessions, an intensive programme — and progress recorded as data.',
     },
     eyebrow: 'Services',
-    title: 'Programmes for every dog — and every goal.',
-    intro:
-      'Every programme starts from a thorough assessment and develops with clear structure. Choose the starting point that fits you.',
-    services: [
-      {
-        name: 'Assessment',
-        body: 'A first, in-depth session: getting to know you, recording behaviour, and a clear plan of next steps.',
-        cta: 'Book an assessment',
-      },
-      {
-        name: 'Private lessons',
-        body: 'Personalised one-to-one work, at a pace tuned to your dog and your goals.',
-        cta: 'Book a session',
-      },
-      {
-        name: 'Group lessons',
-        body: 'Structured practice in small groups, for socialisation and self-control in a controlled setting.',
-        cta: 'Book a session',
-      },
-      {
-        name: 'Intensive programme',
-        body: 'Denser sessions for complex behaviours, with close guidance and frequent reassessment.',
-        cta: 'Learn more',
-      },
-    ],
-    trackingEyebrow: 'Premium service',
-    trackingTitle: 'Structured progress tracking',
+    title: { line1: 'Four ways to', mark: 'start', line2: 'properly.' },
+    lead:
+      'It all begins with the first hello — that is where we work out what is actually going on. After that, you pick the pace.',
+    outcomesTitle: 'You leave with:',
+    cardCta: 'Book it',
+    trackingEyebrow: 'Included in every programme',
+    trackingTitle: 'Progress, in numbers',
     trackingBody:
-      'At every session we record behaviour as data: distance from the trigger, intensity, outcome and intervention. That makes progress visible — a line that rises over the weeks, not an impression.',
-    curveCaption: 'Illustrative data: the tolerance threshold (metres) increases over time.',
-    trackingCta: 'Book an assessment',
+      'At every session we record behaviour as data: distance from the trigger, intensity, outcome, intervention. Four taps on a screen — and a few weeks later you have a curve instead of an impression.',
+    trackingNote: 'It is not billed separately. It is just how we work.',
+    curveCaption: 'Illustrative data: the tolerance threshold (metres) rises over the weeks.',
+    trackingCta: 'Book a first hello',
   },
 } as const;
 
@@ -117,6 +87,9 @@ export default function ServicesPage() {
   const c = copy[lang];
   const router = useRouter();
   const { isWide } = useResponsive();
+  const ty = useType();
+
+  const h1 = [ty.h1, fontFallback.display, styles.ink];
 
   return (
     <>
@@ -127,136 +100,164 @@ export default function ServicesPage() {
         <meta property="og:description" content={c.head.desc} />
       </Head>
 
-      {/* ── Intro ── */}
-      <Section>
-        <View style={styles.intro}>
+      {/* ── Intro ───────────────────────────────────────────────────────── */}
+      <Section spacing="normal">
+        <Stack gap={space.md} style={styles.intro}>
           <Eyebrow>{c.eyebrow}</Eyebrow>
-          <Text style={[styles.h1, fontFallback.display]}>{c.title}</Text>
-          <Text style={[styles.lead, fontFallback.body]}>{c.intro}</Text>
-        </View>
+          <View style={styles.headline}>
+            <Text style={h1}>{c.title.line1}</Text>
+            <HeadlineRow>
+              <Highlight>
+                <Text style={h1}>{c.title.mark}</Text>
+              </Highlight>
+              <Text style={h1}>{c.title.line2}</Text>
+            </HeadlineRow>
+          </View>
+          <Text style={[ty.bodyLg, fontFallback.body, styles.lead]}>{c.lead}</Text>
+        </Stack>
       </Section>
 
-      {/* ── Service catalogue — peer cards (BOOKING_TYPES + board-and-train) ── */}
-      <Section alt>
-        <View style={[styles.grid, isWide ? styles.gridWide : styles.gridNarrow]}>
-          {c.services.map((s) => (
-            <Card key={s.name} large style={isWide ? styles.gridCell : undefined}>
-              <View style={styles.serviceCard}>
-                <Text style={[styles.serviceName, fontFallback.display]}>{s.name}</Text>
-                <Text style={[styles.serviceBody, fontFallback.body]}>{s.body}</Text>
-                <View style={styles.serviceCta}>
-                  <SecondaryButton label={s.cta} onPress={() => router.push('/booking')} />
-                </View>
+      <Wave color={colors.bgAlt} height={isWide ? 64 : 36} />
+
+      {/* ── The catalogue — two up on desktop, stacked on a phone ───────── */}
+      <Section alt spacing="tight">
+        <View style={styles.grid}>
+          {services[lang].map((service, i) => {
+            const Icon = SERVICE_ICONS[i] ?? IconMagnifier;
+            const t = TINTS[service.tint];
+            return (
+              <View key={service.key} style={isWide ? styles.gridCell : undefined}>
+                <Card tint={service.tint} large style={styles.card}>
+                  <IconBubble>
+                    <Icon size={28} color={t.iconInk} />
+                  </IconBubble>
+
+                  <Text style={[ty.h3, fontFallback.display, styles.ink]}>{service.title}</Text>
+                  <Text style={[ty.body, fontFallback.body, { color: t.ink }]}>
+                    {service.summary}
+                  </Text>
+                  <Text style={[ty.body, fontFallback.body, { color: t.ink }]}>
+                    {service.detail}
+                  </Text>
+
+                  <Text style={[ty.body, fontFallback.body, styles.outcomesTitle]}>
+                    {c.outcomesTitle}
+                  </Text>
+                  <Stack gap={space.xs}>
+                    {service.outcomes.map((o) => (
+                      <Bullet key={o} color={t.ink} tickColor={t.iconInk}>
+                        {o}
+                      </Bullet>
+                    ))}
+                  </Stack>
+
+                  <View style={styles.cardFoot}>
+                    <Text style={[ty.body, fontFallback.body, styles.price]}>{service.price}</Text>
+                    <PrimaryButton
+                      label={c.cardCta}
+                      tone="green"
+                      size="small"
+                      onPress={() => router.push('/booking')}
+                    />
+                  </View>
+                </Card>
               </View>
-            </Card>
-          ))}
+            );
+          })}
         </View>
       </Section>
 
-      {/* ── The ONE bold moment: the data-driven premium service + the curve ── */}
+      {/* ── The one bold moment: tracking, with the curve ───────────────── */}
       <ProofBand>
-        <View style={[styles.tracking, isWide ? styles.trackingWide : styles.trackingNarrow]}>
-          <View style={styles.trackingText}>
-            <Eyebrow onDark>{c.trackingEyebrow}</Eyebrow>
-            <Text style={[styles.trackingTitle, fontFallback.display]}>{c.trackingTitle}</Text>
-            <Text style={[styles.trackingBody, fontFallback.body]}>{c.trackingBody}</Text>
-            <View style={styles.trackingCta}>
-              <PrimaryButton label={c.trackingCta} onPress={() => router.push('/booking')} />
+        <Grid gap={isWide ? space.xl : space.lg} align="center">
+          <Col weight={1}>
+            <Stack gap={space.sm}>
+              <Eyebrow onDark>{c.trackingEyebrow}</Eyebrow>
+              <Text style={[ty.h2, fontFallback.display, styles.onDark]}>{c.trackingTitle}</Text>
+              <Text style={[ty.bodyLg, fontFallback.body, styles.onDarkMuted]}>
+                {c.trackingBody}
+              </Text>
+              <Text style={[ty.body, fontFallback.body, styles.trackingNote]}>
+                {c.trackingNote}
+              </Text>
+              <View style={styles.trackingCta}>
+                <PrimaryButton
+                  label={c.trackingCta}
+                  onPress={() => router.push('/booking')}
+                  block={!isWide}
+                />
+              </View>
+            </Stack>
+          </Col>
+
+          <Col weight={1}>
+            <View style={[styles.curveCard, { padding: isWide ? 24 : 18 }]}>
+              <ProgressCurve data={sampleCurve} height={isWide ? 220 : 180} />
+              <Text style={[ty.body, fontFallback.body, styles.caption]}>{c.curveCaption}</Text>
             </View>
-          </View>
-          <View style={styles.trackingCurve}>
-            <ProgressCurve data={SAMPLE_CURVE} height={240} />
-            <Text style={[styles.curveCaption, fontFallback.body]}>{c.curveCaption}</Text>
-          </View>
-        </View>
+          </Col>
+        </Grid>
       </ProofBand>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  // Intro
-  intro: {
-    maxWidth: 720,
-    gap: space.md,
-  },
-  h1: {
-    ...type.h1,
-    color: colors.text,
-  },
-  lead: {
-    ...type.bodyLg,
-    color: colors.textMuted,
-    maxWidth: 640,
-  },
+  ink: { color: colors.text },
+  onDark: { color: colors.onDark },
+  onDarkMuted: { color: colors.onDarkMuted },
 
-  // Catalogue grid — two columns at wide widths, stacked when narrow.
+  intro: { maxWidth: 760 },
+  headline: { gap: 2 },
+  lead: { color: colors.textMuted, maxWidth: 620 },
+
+  // Catalogue — a wrapping two-up rather than a Grid, because four cards of
+  // very different heights in one flex row would stretch the short ones.
   grid: {
-    gap: space.md,
-  },
-  gridWide: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-  },
-  gridNarrow: {
-    flexDirection: 'column',
+    gap: space.md,
   },
   gridCell: {
-    // Two per row with the md gap accounted for.
+    // Two per row once the md gap is accounted for.
     flexBasis: '48%',
     flexGrow: 1,
+    minWidth: 0,
   },
-  serviceCard: {
-    gap: space.sm,
-    height: '100%',
-  },
-  serviceName: {
-    ...type.h3,
+  card: { flex: 1, gap: space.sm },
+  outcomesTitle: {
     color: colors.text,
-  },
-  serviceBody: {
-    ...type.body,
-    color: colors.textMuted,
-  },
-  serviceCta: {
+    fontFamily: fonts.bodyBold,
     marginTop: space.xs,
-    alignItems: 'flex-start',
   },
-
-  // Tracking ProofBand
-  tracking: {
-    gap: space.xl,
-  },
-  trackingWide: {
+  cardFoot: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  trackingNarrow: {
-    flexDirection: 'column',
-  },
-  trackingText: {
-    flex: 1,
+    justifyContent: 'space-between',
     gap: space.sm,
+    marginTop: 'auto',
+    paddingTop: space.md,
   },
-  trackingTitle: {
-    ...type.h2,
-    color: colors.bg,
+  price: {
+    color: colors.text,
+    fontFamily: fonts.bodyBold,
+    fontSize: 18,
   },
-  trackingBody: {
-    ...type.bodyLg,
-    color: colors.bg,
-    opacity: 0.92,
-  },
-  trackingCta: {
-    marginTop: space.sm,
-    alignItems: 'flex-start',
-  },
-  trackingCurve: {
-    flex: 1,
-    gap: space.sm,
-  },
-  curveCaption: {
-    ...type.caption,
+
+  // Tracking band
+  trackingNote: {
     color: colors.accentSoft,
+    fontFamily: fonts.bodySemiBold,
+  },
+  trackingCta: { marginTop: space.sm, alignItems: 'flex-start', alignSelf: 'stretch' },
+  curveCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radii.lg,
+    gap: space.sm,
+  },
+  caption: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

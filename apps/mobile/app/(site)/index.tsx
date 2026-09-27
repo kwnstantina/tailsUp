@@ -1,95 +1,135 @@
 // =============================================================================
 // (site)/index.tsx — Home / Αρχική  (route: /)
 //
-// Business-first (DS-7 / AC-3a-2): this page is about the PRACTICE — a calm,
-// expert, trustworthy dog-training practice — NOT "an app" or "a data platform".
-// The data-tracking platform appears only as a one-line teaser linking into
-// /services. NO ProgressCurve on Home (DS-5; the curve is Services-only).
+// Business-first: this page is about the PRACTICE — a warm, expert, local
+// dog-training practice — not "an app" or "a data platform". The tracking
+// platform earns exactly one band, as the reason to pick THIS trainer rather
+// than the headline itself.
 //
-// One bold moment only: a single dark ProofBand with a method statement
-// (DS-4 / DS-6 "spend boldness in one place"). Everything else is restrained.
-// Bilingual via useLang(); responsive column→row via useResponsive().
+// The playful direction spends colour rather than rationing it: a highlighter
+// mark through the hero, a run of tilted stickers, tinted service cards, a soft
+// wave between bands, and one deep-green block for the proof. The restraint is
+// in the rotation (±2° tilt, three tints, one wave per seam), not in the
+// palette.
+//
+// Bilingual via useLang(); column→row via useResponsive().
 // =============================================================================
 
 import Head from 'expo-router/head';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Eyebrow, PrimaryButton, ProofBand, Section, SecondaryButton } from '../../components/ui';
-import { colors, fontFallback, space, type, useResponsive } from '../../lib/theme';
+import {
+  Card,
+  CirclePhoto,
+  Col,
+  Container,
+  Eyebrow,
+  Grid,
+  HeadlineRow,
+  Highlight,
+  IconBubble,
+  IconMagnifier,
+  IconPair,
+  IconTrio,
+  Paw,
+  PhotoPlaceholder,
+  PrimaryButton,
+  ProofBand,
+  Section,
+  SecondaryButton,
+  Stack,
+  Sticker,
+  TINTS,
+  Wave,
+  Wrap,
+} from '../../components/ui';
+import { ProgressCurve } from '../../components/ProgressCurve';
+import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { crew, practice, sampleCurve, services, trustClaims } from '../../lib/site-content';
+
+// Card order matches `services` — the first three only; the intensive programme
+// lives on /services rather than competing for room in a three-up row.
+const SERVICE_ICONS = [IconMagnifier, IconPair, IconTrio];
 
 const copy = {
   el: {
     head: {
-      title: 'TailsUp — Επαγγελματική Εκπαίδευση Σκύλων',
-      desc: 'Ήρεμη, επαγγελματική εκπαίδευση σκύλων με δομημένη μέθοδο και μετρήσιμη πρόοδο. Κλείστε αξιολόγηση.',
+      title: 'TailsUp — Εκπαίδευση σκύλων χωρίς εκφοβισμό',
+      desc: 'Ήρεμη, μεθοδική εκπαίδευση σκύλων στην Αθήνα. Πρώτη γνωριμία χωρίς δέσμευση — και πρόοδος που φαίνεται.',
     },
-    eyebrow: 'Εκπαίδευση σκύλων',
-    title: 'Ήρεμη, μεθοδική εκπαίδευση που αλλάζει τη ζωή σας με τον σκύλο σας.',
-    sub: 'Συνεργαζόμαστε με εσάς και τον σκύλο σας με υπομονή, σαφή δομή και σεβασμό — για συμπεριφορά που κρατά, όχι κόλπα μιας στιγμής.',
-    ctaPrimary: 'Κλείσε αξιολόγηση',
-    ctaSecondary: 'Δείτε τις υπηρεσίες',
-    introEyebrow: 'Η προσέγγισή μας',
-    introTitle: 'Μια πρακτική χτισμένη στην ηρεμία, την ακρίβεια και την απόδειξη.',
-    values: [
-      {
-        title: 'Ήρεμη μέθοδος',
-        body: 'Δουλεύουμε κάτω από το όριο του σκύλου, με θετική ενίσχυση και χωρίς πίεση — έτσι η μάθηση κρατά.',
-      },
-      {
-        title: 'Δομημένο πλάνο',
-        body: 'Κάθε σκύλος ακολουθεί ένα ξεκάθαρο πρόγραμμα με στόχους, ασκήσεις και επανεκτίμηση σε κάθε συνεδρία.',
-      },
-      {
-        title: 'Απόδειξη, όχι υποσχέσεις',
-        body: 'Καταγράφουμε την πρόοδο συστηματικά, ώστε να βλέπετε τι αλλάζει — και γιατί.',
-      },
-    ],
-    proofEyebrow: 'Η μέθοδός μας',
-    proofTitle: 'Κάθε αλλαγή συμπεριφοράς, καταγεγραμμένη και μετρήσιμη.',
-    proofBody:
-      'Δεν στηριζόμαστε στη μνήμη ή στην εντύπωση. Κάθε συνεδρία τεκμηριώνεται, ώστε η πρόοδος του σκύλου σας να είναι ορατή με δεδομένα — όχι ευχολόγια.',
-    teaserEyebrow: 'Υπηρεσίες',
-    teaserTitle: 'Από την πρώτη αξιολόγηση μέχρι τη μετρήσιμη πρόοδο.',
-    teaserBody:
-      'Ατομικά μαθήματα, ομαδικά προγράμματα και δομημένη παρακολούθηση συμπεριφοράς — μία premium υπηρεσία που κάνει την πρόοδο ορατή.',
-    teaserLink: 'Δείτε όλες τις υπηρεσίες',
+    heroEyebrow: 'Εκπαίδευση σκύλων χωρίς εκφοβισμό',
+    // Composed in three pieces — the middle one gets the highlighter mark.
+    // RN can't paint a box behind an inline run of text (see Highlight.tsx).
+    title: { line1: 'Χαρούμενοι σκύλοι,', mark: 'πιο ήρεμες', line2: 'βόλτες.' },
+    lead:
+      'Γαβγίσματα, τραβήγματα στο λουρί, μια Τρίτη πρωί που ξέφυγε; Θα το λύσουμε μαζί — στον ρυθμό του σκύλου σας, με πολύ λιγότερο άγχος απ’ όσο περιμένετε.',
+    ctaPrimary: 'Κλείσε την πρώτη γνωριμία',
+    ctaSecondary: 'Δες τι κάνουμε',
+    photoAlt: '[ΦΩΤΟ — ένας πολύ ευχαριστημένος σκύλος στη βόλτα]',
+    crewEyebrow: 'Η παρέα',
+    crewTitle: 'Σκύλοι που έχουμε γνωρίσει',
+    servicesEyebrow: 'Τι κάνουμε',
+    servicesTitle: 'Τρεις τρόποι να ξεκινήσετε',
+    servicesLead:
+      'Δεν ξέρετε ποιο σας ταιριάζει; Γράψτε μας δυο γραμμές για το χάος — θα σας πούμε ειλικρινά από πού να ξεκινήσετε.',
+    serviceCta: 'Κλείσ’ το',
+    servicesAll: 'Όλες οι υπηρεσίες',
+    proofEyebrow: 'Αυτό που δεν κάνει κανείς άλλος',
+    proofTitle: 'Θα το δείτε να δουλεύει',
+    proofBody1:
+      'Σε κάθε συνεδρία σημειώνουμε τι πραγματικά έγινε: τι πυροδότησε τον σκύλο σας, πόσο κοντά άντεξε, πόσο γρήγορα ηρέμησε. Τέσσερα χτυπήματα στην οθόνη. Δεν παίρνει τίποτα από τη συνεδρία.',
+    proofBody2:
+      'Μετά από λίγες εβδομάδες γίνεται αυτό εδώ. Χρήσιμο τις μέρες που νομίζετε ότι δεν αλλάζει τίποτα.',
+    proofCta: 'Δείξε μου ένα αληθινό',
+    curveTitle: 'Οι δώδεκα εβδομάδες του [ΟΝΟΜΑ]',
+    curveRange: '2 μ → 14 μ',
+    curveCaption:
+      'Πόσο κοντά μπορούσε να έρθει άλλος σκύλος πριν αντιδράσει ο [ΟΝΟΜΑ]. Ενδεικτικά δεδομένα.',
+    closingTitle: 'Λοιπόν, πείτε μας για τον σκύλο σας.',
+    closingBody:
+      'Δυο-τρεις προτάσεις αρκούν. Ό,τι κι αν κάνει, μάλλον το έχουμε ξανασυναντήσει — και σίγουρα δεν θα μας σοκάρει.',
+    closingNote: 'Χωρίς newsletter. Χωρίς αυτοματοποιημένα email. Μόνο μια απάντηση.',
+    closingPrimary: 'Κλείσε ραντεβού',
+    closingSecondary: 'Στείλε μας μήνυμα',
   },
   en: {
     head: {
-      title: 'TailsUp — Professional Dog Training',
-      desc: 'Calm, professional dog training built on a structured method and measurable progress. Book an assessment.',
+      title: 'TailsUp — Force-free dog training',
+      desc: 'Calm, methodical dog training in Athens. A first hello with no strings — and progress you can actually see.',
     },
-    eyebrow: 'Dog training',
-    title: 'Calm, methodical training that changes life with your dog.',
-    sub: 'We work with you and your dog through patience, clear structure and respect — for behaviour that lasts, not one-off tricks.',
-    ctaPrimary: 'Book an assessment',
-    ctaSecondary: 'See our services',
-    introEyebrow: 'Our approach',
-    introTitle: 'A practice built on calm, precision and proof.',
-    values: [
-      {
-        title: 'Calm method',
-        body: 'We work below your dog’s threshold with positive reinforcement and no pressure — so the learning holds.',
-      },
-      {
-        title: 'A structured plan',
-        body: 'Every dog follows a clear programme with goals, exercises and a reassessment at each session.',
-      },
-      {
-        title: 'Proof, not promises',
-        body: 'We record progress systematically, so you can see what is changing — and why.',
-      },
-    ],
-    proofEyebrow: 'Our method',
-    proofTitle: 'Every behaviour change, recorded and measurable.',
-    proofBody:
-      'We don’t rely on memory or impressions. Each session is documented, so your dog’s progress is visible in data — not wishful thinking.',
-    teaserEyebrow: 'Services',
-    teaserTitle: 'From the first assessment to measurable progress.',
-    teaserBody:
-      'Private lessons, group programmes and structured behaviour tracking — one premium service that makes progress visible.',
-    teaserLink: 'See all services',
+    heroEyebrow: 'Force-free dog training',
+    title: { line1: 'Happy dogs,', mark: 'happier', line2: 'walks.' },
+    lead:
+      'Barking, lunging, pulling on the lead, or just a bit much on a Tuesday morning? We’ll work it out together — at your dog’s pace, with far less stress than you’re expecting.',
+    ctaPrimary: 'Book a first hello',
+    ctaSecondary: 'See what we do',
+    photoAlt: '[PHOTO — a very pleased dog, mid-walk]',
+    crewEyebrow: 'Some of the crew',
+    crewTitle: 'Dogs we’ve worked with',
+    servicesEyebrow: 'What we do',
+    servicesTitle: 'Three ways to start',
+    servicesLead:
+      'Not sure which one? Send us a note describing the chaos — we’ll tell you honestly where to begin.',
+    serviceCta: 'Book it',
+    servicesAll: 'All services',
+    proofEyebrow: 'The bit nobody else does',
+    proofTitle: 'You get to watch it work',
+    proofBody1:
+      'Every session we tap out what actually happened — what set your dog off, how close they could get, how quickly they came back down. Four taps. It takes nothing away from the session.',
+    proofBody2:
+      'A few weeks in, it turns into this. Handy on the days it feels like nothing is changing.',
+    proofCta: 'Show me a real one',
+    curveTitle: '[DOG NAME]’s twelve weeks',
+    curveRange: '2 m → 14 m',
+    curveCaption:
+      'How close another dog could get before [DOG NAME] reacted. Sample data.',
+    closingTitle: 'So, tell us about your dog.',
+    closingBody:
+      'A few sentences is plenty. Whatever they’re doing, we’ve almost certainly met it before — and nothing you write is going to shock us.',
+    closingNote: 'No newsletter. No drip campaign. Just a reply.',
+    closingPrimary: 'Book an appointment',
+    closingSecondary: 'Send us a message',
   },
 } as const;
 
@@ -98,6 +138,10 @@ export default function HomePage() {
   const c = copy[lang];
   const router = useRouter();
   const { isWide } = useResponsive();
+  const ty = useType();
+
+  const h1 = [ty.h1, fontFallback.display, styles.ink];
+  const h2 = [ty.h2, fontFallback.display, styles.ink];
 
   return (
     <>
@@ -108,156 +152,352 @@ export default function HomePage() {
         <meta property="og:description" content={c.head.desc} />
       </Head>
 
-      {/* ── Hero — the practice in one line + the primary CTA ── */}
-      <Section>
-        <View style={styles.hero}>
-          <Eyebrow>{c.eyebrow}</Eyebrow>
-          <Text style={[styles.h1, fontFallback.display]}>{c.title}</Text>
-          <Text style={[styles.sub, fontFallback.body]}>{c.sub}</Text>
-          <View style={[styles.ctaRow, isWide ? styles.ctaRowWide : styles.ctaRowNarrow]}>
-            <PrimaryButton label={c.ctaPrimary} onPress={() => router.push('/booking')} />
-            <SecondaryButton label={c.ctaSecondary} onPress={() => router.push('/services')} />
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
+      <Section spacing="normal">
+        <Grid gap={isWide ? space.xl : space.lg} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Eyebrow>{`${c.heroEyebrow} · ${practice.city[lang]}`}</Eyebrow>
+
+              <View style={styles.headline}>
+                <Text style={h1}>{c.title.line1}</Text>
+                <HeadlineRow>
+                  <Highlight>
+                    <Text style={h1}>{c.title.mark}</Text>
+                  </Highlight>
+                  <Text style={h1}>{c.title.line2}</Text>
+                </HeadlineRow>
+              </View>
+
+              <Text style={[ty.bodyLg, fontFallback.body, styles.lead]}>{c.lead}</Text>
+
+              <View style={[styles.ctaRow, !isWide && styles.ctaRowNarrow]}>
+                <PrimaryButton
+                  label={c.ctaPrimary}
+                  onPress={() => router.push('/booking')}
+                  block={!isWide}
+                />
+                <SecondaryButton
+                  label={c.ctaSecondary}
+                  onPress={() => router.push('/services')}
+                  block={!isWide}
+                />
+              </View>
+
+              <View style={styles.replyRow}>
+                <View style={styles.dot} />
+                <Text style={[ty.body, fontFallback.body, styles.replyText]}>
+                  {lang === 'el'
+                    ? `Απαντάμε συνήθως ${practice.replyTime.el}.`
+                    : `We usually reply ${practice.replyTime.en}.`}
+                </Text>
+              </View>
+            </Stack>
+          </Col>
+
+          <Col weight={1}>
+            <View style={styles.photoWrap}>
+              {/*
+                Decorative shapes behind the photo. Hidden with `display` rather
+                than a conditional render so the element tree stays identical
+                between the pre-rendered HTML and the hydrated client.
+              */}
+              <View style={[styles.blobMint, { display: isWide ? 'flex' : 'none' }]} />
+              <View style={[styles.blobCoral, { display: isWide ? 'flex' : 'none' }]} />
+              <PhotoPlaceholder
+                label={c.photoAlt}
+                height={isWide ? 440 : 260}
+                tint="peach"
+                style={isWide ? styles.photoInset : undefined}
+              />
+            </View>
+          </Col>
+        </Grid>
+      </Section>
+
+      {/* Soft seam into the peach band. One wave per transition — more and it
+          stops being a signature and starts being noise. */}
+      <Wave color={colors.bgAlt} height={isWide ? 64 : 36} />
+
+      {/* ── Trust stickers ──────────────────────────────────────────────── */}
+      <View style={styles.stickerBand}>
+        <Container style={styles.stickerInner}>
+          <Wrap gap={14} justify={isWide ? 'center' : 'flex-start'}>
+            {trustClaims[lang].map((claim, i) => (
+              <Sticker
+                key={claim.label}
+                label={claim.label}
+                tint={claim.tint}
+                tick={claim.tick}
+                // Alternating tilt, never past 2°.
+                rotate={i % 2 === 0 ? -1.5 : 1.3}
+              />
+            ))}
+          </Wrap>
+        </Container>
+      </View>
+
+      {/* ── The crew strip ──────────────────────────────────────────────── */}
+      <Section alt spacing="tight">
+        <Stack gap={space.md}>
+          <Stack gap={4}>
+            <Eyebrow>{c.crewEyebrow}</Eyebrow>
+            <Text style={h2}>{c.crewTitle}</Text>
+          </Stack>
+          <Grid gap={isWide ? 20 : space.md}>
+            {crew[lang].map((member) => (
+              <Col key={member.name}>
+                <CirclePhoto name={member.name} caption={member.workedOn} tint={member.tint} />
+              </Col>
+            ))}
+          </Grid>
+        </Stack>
+      </Section>
+
+      {/* ── Services — three tinted cards ───────────────────────────────── */}
+      <Section spacing="normal">
+        <Stack gap={space.lg}>
+          <Stack gap={4} style={isWide ? styles.centered : undefined}>
+            <Eyebrow>{c.servicesEyebrow}</Eyebrow>
+            <Text style={[h2, isWide && styles.centerText]}>{c.servicesTitle}</Text>
+            <Text
+              style={[
+                ty.bodyLg,
+                fontFallback.body,
+                styles.lead,
+                isWide && styles.centerText,
+                styles.servicesLead,
+              ]}
+            >
+              {c.servicesLead}
+            </Text>
+          </Stack>
+
+          <Grid>
+            {services[lang].slice(0, 3).map((service, i) => {
+              const Icon = SERVICE_ICONS[i] ?? IconMagnifier;
+              const t = TINTS[service.tint];
+              return (
+                <Col key={service.key}>
+                  <Card tint={service.tint} style={styles.serviceCard}>
+                    <IconBubble>
+                      <Icon size={28} color={t.iconInk} />
+                    </IconBubble>
+                    <Text style={[ty.h3, fontFallback.display, styles.ink]}>{service.title}</Text>
+                    <Text style={[ty.body, fontFallback.body, { color: t.ink }]}>
+                      {service.summary}
+                    </Text>
+                    <View style={styles.serviceFoot}>
+                      <Text style={[ty.body, fontFallback.body, styles.price]}>
+                        {service.price}
+                      </Text>
+                      <PrimaryButton
+                        label={c.serviceCta}
+                        tone="green"
+                        size="small"
+                        onPress={() => router.push('/booking')}
+                      />
+                    </View>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Grid>
+
+          <View style={isWide ? styles.centered : undefined}>
+            <SecondaryButton
+              label={c.servicesAll}
+              size="small"
+              onPress={() => router.push('/services')}
+            />
           </View>
-        </View>
+        </Stack>
       </Section>
 
-      {/* ── Intro + value/method strip (3 calm cards, no hype) ── */}
-      <Section alt>
-        <Eyebrow>{c.introEyebrow}</Eyebrow>
-        <Text style={[styles.h2, fontFallback.display]}>{c.introTitle}</Text>
-        <View style={[styles.cardGrid, isWide ? styles.cardGridWide : styles.cardGridNarrow]}>
-          {c.values.map((v) => (
-            <Card key={v.title} style={isWide ? styles.cardWide : undefined}>
-              <Text style={[styles.cardTitle, fontFallback.display]}>{v.title}</Text>
-              <Text style={[styles.cardBody, fontFallback.body]}>{v.body}</Text>
-            </Card>
-          ))}
-        </View>
-      </Section>
-
-      {/* ── The ONE bold moment: a dark ProofBand with the method statement ── */}
+      {/* ── The one bold moment: the tracking platform, as proof ────────── */}
       <ProofBand>
-        <View style={styles.proofWrap}>
-          <Eyebrow onDark>{c.proofEyebrow}</Eyebrow>
-          <Text style={[styles.proofTitle, fontFallback.display]}>{c.proofTitle}</Text>
-          <Text style={[styles.proofBody, fontFallback.body]}>{c.proofBody}</Text>
-        </View>
+        <Grid gap={isWide ? space.xl : space.lg} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Eyebrow onDark>{c.proofEyebrow}</Eyebrow>
+              <Text style={[ty.h2, fontFallback.display, styles.onDark]}>{c.proofTitle}</Text>
+              <Text style={[ty.bodyLg, fontFallback.body, styles.onDarkMuted]}>
+                {c.proofBody1}
+              </Text>
+              <Text style={[ty.bodyLg, fontFallback.body, styles.onDarkMuted]}>
+                {c.proofBody2}
+              </Text>
+              <View style={styles.proofCta}>
+                <PrimaryButton
+                  label={c.proofCta}
+                  onPress={() => router.push('/results')}
+                  block={!isWide}
+                />
+              </View>
+            </Stack>
+          </Col>
+
+          <Col weight={1}>
+            <View style={[styles.curveCard, { padding: isWide ? 28 : 20 }]}>
+              <View style={styles.curveHead}>
+                <Text
+                  numberOfLines={1}
+                  style={[ty.h3, fontFallback.display, styles.ink, styles.curveTitle]}
+                >
+                  {c.curveTitle}
+                </Text>
+                <Text style={[ty.body, fontFallback.body, styles.curveRange]}>{c.curveRange}</Text>
+              </View>
+              <ProgressCurve data={sampleCurve} height={isWide ? 200 : 170} />
+              <Text style={[ty.body, fontFallback.body, styles.caption]}>{c.curveCaption}</Text>
+            </View>
+          </Col>
+        </Grid>
       </ProofBand>
 
-      {/* ── Services teaser — one-line glimpse + a link into /services ── */}
-      <Section>
-        <View style={[styles.teaser, isWide ? styles.teaserWide : styles.teaserNarrow]}>
-          <View style={styles.teaserText}>
-            <Eyebrow>{c.teaserEyebrow}</Eyebrow>
-            <Text style={[styles.teaserTitle, fontFallback.display]}>{c.teaserTitle}</Text>
-            <Text style={[styles.sub, fontFallback.body]}>{c.teaserBody}</Text>
-          </View>
-          <View style={styles.teaserCta}>
-            <SecondaryButton label={c.teaserLink} onPress={() => router.push('/services')} />
-          </View>
-        </View>
+      {/* ── Closing invitation ──────────────────────────────────────────── */}
+      <Section alt spacing="normal">
+        <Grid gap={isWide ? space.xl : space.lg} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Text style={h2}>{c.closingTitle}</Text>
+              <Text style={[ty.bodyLg, fontFallback.body, styles.lead]}>{c.closingBody}</Text>
+              <View style={styles.replyRow}>
+                <Paw size={22} />
+                <Text style={[ty.body, fontFallback.body, styles.replyText]}>{c.closingNote}</Text>
+              </View>
+            </Stack>
+          </Col>
+          <Col weight={1}>
+            <Card tint="white">
+              <View style={styles.closingCta}>
+                <PrimaryButton
+                  label={c.closingPrimary}
+                  onPress={() => router.push('/booking')}
+                  block
+                />
+                <SecondaryButton
+                  label={c.closingSecondary}
+                  onPress={() => router.push('/contact')}
+                  block
+                />
+              </View>
+            </Card>
+          </Col>
+        </Grid>
       </Section>
     </>
   );
 }
 
+// Only width-independent styles live here — anything that reads `useType()` has
+// to be applied inline, because the scale changes with the window.
 const styles = StyleSheet.create({
+  ink: { color: colors.text },
+  onDark: { color: colors.onDark },
+  onDarkMuted: { color: colors.onDarkMuted, maxWidth: 470 },
+
   // Hero
-  hero: {
-    maxWidth: 760,
-    gap: space.md,
-  },
-  h1: {
-    ...type.h1,
-    color: colors.text,
-  },
-  sub: {
-    ...type.bodyLg,
-    color: colors.textMuted,
-    maxWidth: 620,
-  },
+  headline: { gap: 2 },
+  lead: { color: colors.textMuted, maxWidth: 500 },
   ctaRow: {
-    gap: space.sm,
-    marginTop: space.xs,
-  },
-  ctaRowWide: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: space.sm,
+    marginTop: 4,
   },
   ctaRowNarrow: {
     flexDirection: 'column',
     alignItems: 'stretch',
   },
-
-  // Section headings
-  h2: {
-    ...type.h2,
-    color: colors.text,
-    marginBottom: space.lg,
-    maxWidth: 640,
-  },
-
-  // Value/method cards
-  cardGrid: {
-    gap: space.md,
-  },
-  cardGridWide: {
+  replyRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  cardGridNarrow: {
-    flexDirection: 'column',
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
   },
-  cardWide: {
-    flex: 1,
-  },
-  cardTitle: {
-    ...type.h3,
-    color: colors.text,
-    marginBottom: space.xs,
-  },
-  cardBody: {
-    ...type.body,
+  replyText: {
     color: colors.textMuted,
-  },
-
-  // ProofBand
-  proofWrap: {
-    maxWidth: 720,
-    gap: space.sm,
-  },
-  proofTitle: {
-    ...type.h2,
-    color: colors.bg,
-  },
-  proofBody: {
-    ...type.bodyLg,
-    color: colors.bg,
-    opacity: 0.92,
-  },
-
-  // Services teaser
-  teaser: {
-    gap: space.lg,
-  },
-  teaserWide: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  teaserNarrow: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  teaserText: {
+    fontFamily: fonts.bodySemiBold,
     flexShrink: 1,
+  },
+
+  // Hero photo + its decorative shapes
+  photoWrap: { position: 'relative' },
+  photoInset: { width: '92%', alignSelf: 'flex-end' },
+  blobMint: {
+    position: 'absolute',
+    left: -10,
+    top: 40,
+    width: 150,
+    height: 150,
+    borderRadius: radii.pill,
+    backgroundColor: colors.mint,
+  },
+  blobCoral: {
+    position: 'absolute',
+    right: 24,
+    top: -34,
+    width: 92,
+    height: 92,
+    borderRadius: radii.pill,
+    backgroundColor: colors.coral,
+    opacity: 0.85,
+  },
+
+  // Sticker band — sits flush under the wave, so it owns its own padding
+  // rather than taking a Section's rhythm.
+  stickerBand: { backgroundColor: colors.bgAlt },
+  stickerInner: { paddingTop: space.xs, paddingBottom: space.lg },
+
+  // Services
+  centered: { alignItems: 'center' },
+  centerText: { textAlign: 'center' },
+  servicesLead: { maxWidth: 560 },
+  serviceCard: { flex: 1, gap: space.sm },
+  serviceFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: space.sm,
+    marginTop: 'auto',
+    paddingTop: space.md,
   },
-  teaserTitle: {
-    ...type.h2,
+  price: {
     color: colors.text,
-    maxWidth: 640,
+    fontFamily: fonts.bodyBold,
+    fontSize: 18,
   },
-  teaserCta: {
-    flexShrink: 0,
+
+  // Proof band
+  proofCta: { marginTop: 6, alignItems: 'flex-start', alignSelf: 'stretch' },
+  curveCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radii.lg,
+    gap: 14,
   },
+  curveHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.xs,
+  },
+  curveTitle: { flex: 1 },
+  curveRange: {
+    color: colors.accent,
+    fontFamily: fonts.bodyBold,
+  },
+  caption: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  // Closing
+  closingCta: { gap: space.sm },
 });

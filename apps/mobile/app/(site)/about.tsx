@@ -1,87 +1,151 @@
 // =============================================================================
 // (site)/about.tsx — About / Ποιοι είμαστε  (route: /about)
 //
-// Builds trust / justifies premium pricing: the trainer's story, the training
-// philosophy, credentials, and a clearly-marked placeholder photo. Long copy
-// runs at reading width (maxProse 720). "Proof, not promises" tone — calm, no
-// hype. Optional single ProofBand. Bilingual via useLang().
+// The page that has to make someone trust a stranger with their dog: who we
+// are, what we will and will not do, the trainer, the credentials.
 //
-// Placeholder trainer name + bio + photo (per the user decision) — clearly
-// marked so a real name/photo replace them with no layout change.
+// The playful direction changes the VOICE here more than the layout — the
+// method is stated as three plain promises on tinted cards rather than two
+// paragraphs of prose, and the one place that stays deliberately quiet is the
+// credentials list, because a certification does not need a sticker.
+//
+// Trainer name, bio, photo and credentials are clearly-marked placeholders per
+// the user decision: real values drop in with no layout change.
 // =============================================================================
 
 import Head from 'expo-router/head';
+import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Eyebrow, ProofBand, Section } from '../../components/ui';
-import { colors, fontFallback, radii, space, type } from '../../lib/theme';
+import {
+  Bullet,
+  Card,
+  Col,
+  Eyebrow,
+  Grid,
+  HeadlineRow,
+  Highlight,
+  IconBubble,
+  IconCheck,
+  IconPair,
+  IconRising,
+  PhotoPlaceholder,
+  PrimaryButton,
+  ProofBand,
+  Section,
+  Stack,
+  TINTS,
+  Wave,
+  type Tint,
+} from '../../components/ui';
+import { colors, fontFallback, fonts, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+
+const PROMISE_ICONS = [IconCheck, IconPair, IconRising];
+const PROMISE_TINTS: Tint[] = ['mint', 'peach', 'coral'];
 
 const copy = {
   el: {
     head: {
       title: 'Ποιοι Είμαστε — TailsUp',
-      desc: 'Η ιστορία, η φιλοσοφία και τα προσόντα της πρακτικής μας στην εκπαίδευση σκύλων.',
+      desc: 'Πώς δουλεύουμε, τι δεν κάνουμε ποτέ, και ποιος θα είναι απέναντί σας στην πρώτη συνεδρία.',
     },
     eyebrow: 'Ποιοι είμαστε',
-    title: 'Μια πρακτική χτισμένη στην εμπιστοσύνη.',
-    intro:
-      'Η TailsUp ξεκίνησε από μια απλή πεποίθηση: η εκπαίδευση πετυχαίνει όταν είναι ήρεμη, συνεπής και βασισμένη σε όσα πραγματικά συμβαίνουν — όχι σε υποσχέσεις.',
-    methodEyebrow: 'Η μέθοδός μας',
-    methodTitle: 'Γιατί δουλεύουμε δομημένα και μακροπρόθεσμα.',
-    methodBody:
-      'Η συμπεριφορά ενός σκύλου δεν αλλάζει σε μία συνεδρία· χτίζεται σταδιακά, κάτω από το όριο του άγχους του. Γι’ αυτό κάθε πρόγραμμα έχει σαφή δομή, μετρήσιμους στόχους και τακτική επανεκτίμηση. Καταγράφουμε κάθε συνεδρία ώστε οι αποφάσεις μας να βασίζονται σε δεδομένα — και η πρόοδος να είναι ορατή σε εσάς.',
-    methodBody2:
-      'Δεν χρησιμοποιούμε εκφοβισμό ή πίεση. Δουλεύουμε με θετική ενίσχυση, υπομονή και σεβασμό στον ρυθμό κάθε σκύλου, ώστε η αλλαγή να κρατά πέρα από την αίθουσα εκπαίδευσης.',
+    title: { line1: 'Μια πρακτική χτισμένη', mark: 'στην εμπιστοσύνη', line2: '— όχι στα κόλπα.' },
+    lead:
+      'Η TailsUp ξεκίνησε από κάτι απλό: η εκπαίδευση πετυχαίνει όταν είναι ήρεμη, συνεπής και βασισμένη σε όσα πραγματικά συμβαίνουν. Όχι σε υποσχέσεις, και σίγουρα όχι στον φόβο.',
+    photoAlt: '[ΦΩΤΟ — μια συνεδρία σε εξέλιξη]',
+    promisesEyebrow: 'Πώς δουλεύουμε',
+    promisesTitle: 'Τρία πράγματα που μπορείτε να περιμένετε',
+    promises: [
+      {
+        title: 'Ποτέ με φόβο',
+        body:
+          'Χωρίς εκφοβισμό, χωρίς πίεση, χωρίς εργαλεία που πονάνε. Δουλεύουμε πάντα κάτω από το όριο άγχους του σκύλου — εκεί όπου μπορεί ακόμα να μάθει.',
+      },
+      {
+        title: 'Μαζί με εσάς',
+        body:
+          'Ο σκύλος περνάει μία ώρα μαζί μας και εκατόν εξήντα οκτώ μαζί σας. Γι’ αυτό εκπαιδεύουμε και τους δύο — κι εσείς φεύγετε ξέροντας τι να κάνετε τη Δευτέρα.',
+      },
+      {
+        title: 'Με απόδειξη',
+        body:
+          'Καταγράφουμε κάθε συνεδρία, ώστε οι αποφάσεις μας να βασίζονται σε δεδομένα και η πρόοδος να είναι ορατή — και στις καλές και στις κακές εβδομάδες.',
+      },
+    ],
     trainerEyebrow: 'Ο εκπαιδευτής',
-    photoCaption: '[φωτογραφία εκπαιδευτή]',
+    trainerPhotoAlt: '[φωτογραφία εκπαιδευτή]',
     trainerName: '[Όνομα Εκπαιδευτή]',
     trainerRole: 'Ιδρυτής & επικεφαλής εκπαιδευτής',
     trainerBio:
-      '[Σύντομο βιογραφικό]: πάνω από [Χ] χρόνια εμπειρίας στην εκπαίδευση και την τροποποίηση συμπεριφοράς σκύλων, με εξειδίκευση στις αντιδραστικές συμπεριφορές και στη συνεργασία ιδιοκτήτη–σκύλου.',
+      '[Σύντομο βιογραφικό]: πάνω από [Χ] χρόνια δουλειάς με σκύλους και τους ανθρώπους τους, με ειδίκευση στην αντιδραστικότητα και στη συνεργασία ιδιοκτήτη–σκύλου. Η αγαπημένη περίπτωση είναι πάντα αυτή που όλοι οι άλλοι είχαν παρατήσει.',
     credsTitle: 'Προσόντα & πιστοποιήσεις',
     creds: [
       '[Πιστοποίηση εκπαίδευσης συμπεριφοράς]',
       '[Μέλος επαγγελματικού συλλόγου]',
       '[Συνεχιζόμενη εκπαίδευση / σεμινάρια]',
     ],
-    proofTitle: 'Η φιλοσοφία μας σε μία πρόταση.',
-    proofBody: 'Απόδειξη, όχι υποσχέσεις — και ηρεμία σε κάθε βήμα.',
+    proofTitle: 'Η φιλοσοφία μας, σε μία γραμμή.',
+    proofBody:
+      'Απόδειξη αντί για υποσχέσεις, ηρεμία αντί για πίεση — και ένας σκύλος που θέλει να συνεργαστεί, όχι που φοβάται να μην το κάνει.',
+    proofCta: 'Ελάτε να γνωριστούμε',
   },
   en: {
     head: {
       title: 'About — TailsUp',
-      desc: 'The story, philosophy and credentials behind our dog-training practice.',
+      desc: 'How we work, what we will never do, and who will be across from you at the first session.',
     },
     eyebrow: 'About us',
-    title: 'A practice built on trust.',
-    intro:
-      'TailsUp began from a simple conviction: training works when it is calm, consistent, and grounded in what is actually happening — not in promises.',
-    methodEyebrow: 'Our method',
-    methodTitle: 'Why we work in a structured, long-term way.',
-    methodBody:
-      'A dog’s behaviour doesn’t change in a single session; it is built gradually, below the threshold of its stress. That is why every programme has clear structure, measurable goals and regular reassessment. We record each session so our decisions rest on data — and so progress is visible to you.',
-    methodBody2:
-      'We don’t use intimidation or pressure. We work with positive reinforcement, patience and respect for each dog’s pace, so change holds well beyond the training room.',
+    title: { line1: 'A practice built on', mark: 'trust', line2: '— not tricks.' },
+    lead:
+      'TailsUp started from something simple: training works when it is calm, consistent and grounded in what is actually happening. Not in promises, and definitely not in fear.',
+    photoAlt: '[PHOTO — a session in progress]',
+    promisesEyebrow: 'How we work',
+    promisesTitle: 'Three things you can count on',
+    promises: [
+      {
+        title: 'Never through fear',
+        body:
+          'No intimidation, no pressure, no tools that hurt. We always work below your dog’s stress threshold — the place where they can still learn.',
+      },
+      {
+        title: 'With you, not just your dog',
+        body:
+          'Your dog spends an hour a week with us and a hundred and sixty-eight with you. So we train both — and you leave knowing what to do on Monday.',
+      },
+      {
+        title: 'With proof',
+        body:
+          'We write down every session, so our decisions rest on data and progress stays visible — through the good weeks and the flat ones.',
+      },
+    ],
     trainerEyebrow: 'The trainer',
-    photoCaption: '[trainer photo]',
+    trainerPhotoAlt: '[trainer photo]',
     trainerName: '[Trainer Name]',
     trainerRole: 'Founder & lead trainer',
     trainerBio:
-      '[Short bio]: over [X] years of experience in dog training and behaviour modification, specialising in reactivity and owner–dog teamwork.',
+      '[Short bio]: over [X] years working with dogs and their people, specialising in reactivity and owner–dog teamwork. The favourite case is always the one everybody else had given up on.',
     credsTitle: 'Credentials & certifications',
     creds: [
       '[Behaviour-training certification]',
       '[Professional association membership]',
       '[Continuing education / seminars]',
     ],
-    proofTitle: 'Our philosophy in one line.',
-    proofBody: 'Proof, not promises — and calm at every step.',
+    proofTitle: 'Our philosophy, in one line.',
+    proofBody:
+      'Proof instead of promises, calm instead of pressure — and a dog who wants to work with you, not one who is afraid not to.',
+    proofCta: 'Come and say hello',
   },
 } as const;
 
 export default function AboutPage() {
   const { lang } = useLang();
   const c = copy[lang];
+  const router = useRouter();
+  const { isWide } = useResponsive();
+  const ty = useType();
+
+  const h1 = [ty.h1, fontFallback.display, styles.ink];
 
   return (
     <>
@@ -92,164 +156,131 @@ export default function AboutPage() {
         <meta property="og:description" content={c.head.desc} />
       </Head>
 
-      {/* ── Intro (reading width) ── */}
-      <Section prose>
-        <View style={styles.block}>
-          <Eyebrow>{c.eyebrow}</Eyebrow>
-          <Text style={[styles.h1, fontFallback.display]}>{c.title}</Text>
-          <Text style={[styles.lead, fontFallback.body]}>{c.intro}</Text>
-        </View>
+      {/* ── Intro ───────────────────────────────────────────────────────── */}
+      <Section spacing="normal">
+        <Grid gap={isWide ? space.xl : space.lg} align="center">
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Eyebrow>{c.eyebrow}</Eyebrow>
+              <View style={styles.headline}>
+                <Text style={h1}>{c.title.line1}</Text>
+                <HeadlineRow>
+                  <Highlight>
+                    <Text style={h1}>{c.title.mark}</Text>
+                  </Highlight>
+                  <Text style={h1}>{c.title.line2}</Text>
+                </HeadlineRow>
+              </View>
+              <Text style={[ty.bodyLg, fontFallback.body, styles.lead]}>{c.lead}</Text>
+            </Stack>
+          </Col>
+          <Col weight={1}>
+            <PhotoPlaceholder label={c.photoAlt} height={isWide ? 360 : 240} tint="mint" />
+          </Col>
+        </Grid>
       </Section>
 
-      {/* ── Method / philosophy prose ── */}
-      <Section alt prose>
-        <View style={styles.block}>
-          <Eyebrow>{c.methodEyebrow}</Eyebrow>
-          <Text style={[styles.h2, fontFallback.display]}>{c.methodTitle}</Text>
-          <Text style={[styles.body, fontFallback.body]}>{c.methodBody}</Text>
-          <Text style={[styles.body, fontFallback.body]}>{c.methodBody2}</Text>
-        </View>
+      <Wave color={colors.bgAlt} height={isWide ? 64 : 36} />
+
+      {/* ── The three promises ──────────────────────────────────────────── */}
+      <Section alt spacing="tight">
+        <Stack gap={space.lg}>
+          <Stack gap={4}>
+            <Eyebrow>{c.promisesEyebrow}</Eyebrow>
+            <Text style={[ty.h2, fontFallback.display, styles.ink]}>{c.promisesTitle}</Text>
+          </Stack>
+
+          <Grid>
+            {c.promises.map((p, i) => {
+              const tint = PROMISE_TINTS[i];
+              const Icon = PROMISE_ICONS[i];
+              const t = TINTS[tint];
+              return (
+                <Col key={p.title}>
+                  <Card tint={tint} style={styles.promiseCard}>
+                    <IconBubble>
+                      <Icon size={28} color={t.iconInk} />
+                    </IconBubble>
+                    <Text style={[ty.h3, fontFallback.display, styles.ink]}>{p.title}</Text>
+                    <Text style={[ty.body, fontFallback.body, { color: t.ink }]}>{p.body}</Text>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Grid>
+        </Stack>
       </Section>
 
-      {/* ── Trainer + credentials ── */}
-      <Section prose>
-        <Eyebrow>{c.trainerEyebrow}</Eyebrow>
-        <View style={styles.trainerCardWrap}>
-          <Card large>
-            <View style={styles.trainer}>
-              {/* Clearly-marked placeholder photo (styled box, no fake image). */}
-              <View style={styles.photo} accessibilityRole="image" accessibilityLabel={c.photoCaption}>
-                <Text style={[styles.photoLabel, fontFallback.body]}>{c.photoCaption}</Text>
-              </View>
-              <View style={styles.trainerText}>
-                <Text style={[styles.trainerName, fontFallback.display]}>{c.trainerName}</Text>
-                <Text style={[styles.trainerRole, fontFallback.body]}>{c.trainerRole}</Text>
-                <Text style={[styles.body, fontFallback.body]}>{c.trainerBio}</Text>
-              </View>
-            </View>
+      {/* ── The trainer + credentials ───────────────────────────────────── */}
+      <Section spacing="normal">
+        <Stack gap={space.lg}>
+          <Eyebrow>{c.trainerEyebrow}</Eyebrow>
+
+          <Card tint="white" large>
+            <Grid gap={space.lg} align="flex-start">
+              <Col width={200}>
+                <PhotoPlaceholder
+                  label={c.trainerPhotoAlt}
+                  height={isWide ? 200 : 180}
+                  tint="peach"
+                  kind="portrait"
+                />
+              </Col>
+              <Col weight={1}>
+                <Stack gap={space.xs}>
+                  <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.trainerName}</Text>
+                  <Text style={[ty.body, fontFallback.body, styles.role]}>{c.trainerRole}</Text>
+                  <Text style={[ty.bodyLg, fontFallback.body, styles.ink]}>{c.trainerBio}</Text>
+                </Stack>
+              </Col>
+            </Grid>
           </Card>
-        </View>
 
-        <View style={styles.credsWrap}>
-          <Text style={[styles.credsTitle, fontFallback.display]}>{c.credsTitle}</Text>
-          {c.creds.map((cr) => (
-            <View key={cr} style={styles.credRow}>
-              <View style={styles.credDot} />
-              <Text style={[styles.credText, fontFallback.body]}>{cr}</Text>
-            </View>
-          ))}
-        </View>
+          {/* The quiet corner of the page — a certification does not need a
+              sticker, so this is a plain ticked list on the page background. */}
+          <Stack gap={space.sm} style={styles.creds}>
+            <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.credsTitle}</Text>
+            {c.creds.map((cr) => (
+              <Bullet key={cr}>{cr}</Bullet>
+            ))}
+          </Stack>
+        </Stack>
       </Section>
 
-      {/* ── The ONE bold moment ── */}
-      <ProofBand prose>
-        <View style={styles.proofWrap}>
-          <Text style={[styles.proofTitle, fontFallback.display]}>{c.proofTitle}</Text>
-          <Text style={[styles.proofBody, fontFallback.body]}>{c.proofBody}</Text>
-        </View>
+      {/* ── The one bold moment ─────────────────────────────────────────── */}
+      <ProofBand maxWidth={880}>
+        <Stack gap={space.md}>
+          <Text style={[ty.h2, fontFallback.display, styles.onDark]}>{c.proofTitle}</Text>
+          <Text style={[ty.bodyLg, fontFallback.body, styles.onDarkMuted]}>{c.proofBody}</Text>
+          <View style={styles.proofCta}>
+            <PrimaryButton
+              label={c.proofCta}
+              onPress={() => router.push('/booking')}
+              block={!isWide}
+            />
+          </View>
+        </Stack>
       </ProofBand>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  block: {
-    gap: space.md,
-  },
-  h1: {
-    ...type.h1,
-    color: colors.text,
-  },
-  h2: {
-    ...type.h2,
-    color: colors.text,
-  },
-  lead: {
-    ...type.bodyLg,
-    color: colors.textMuted,
-  },
-  body: {
-    ...type.bodyLg,
-    color: colors.text,
-  },
+  ink: { color: colors.text },
+  onDark: { color: colors.onDark },
+  onDarkMuted: { color: colors.onDarkMuted, maxWidth: 620 },
 
-  // Trainer card
-  trainerCardWrap: {
-    marginTop: space.md,
-    marginBottom: space.lg,
-  },
-  trainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.lg,
-    alignItems: 'flex-start',
-  },
-  photo: {
-    width: 140,
-    height: 140,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgAlt,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoLabel: {
-    ...type.caption,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingHorizontal: space.xs,
-  },
-  trainerText: {
-    flex: 1,
-    minWidth: 240,
-    gap: space.xs,
-  },
-  trainerName: {
-    ...type.h3,
-    color: colors.text,
-  },
-  trainerRole: {
-    ...type.body,
+  headline: { gap: 2 },
+  lead: { color: colors.textMuted, maxWidth: 560 },
+
+  promiseCard: { flex: 1, gap: space.sm },
+
+  role: {
     color: colors.accent,
-    marginBottom: space.xs,
+    fontFamily: fonts.bodyBold,
+    marginBottom: 2,
   },
+  creds: { maxWidth: 640 },
 
-  // Credentials
-  credsWrap: {
-    gap: space.sm,
-  },
-  credsTitle: {
-    ...type.h3,
-    color: colors.text,
-    marginBottom: space.xs,
-  },
-  credRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  credDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.accent,
-  },
-  credText: {
-    ...type.body,
-    color: colors.text,
-  },
-
-  // ProofBand
-  proofWrap: {
-    gap: space.sm,
-  },
-  proofTitle: {
-    ...type.h2,
-    color: colors.bg,
-  },
-  proofBody: {
-    ...type.bodyLg,
-    color: colors.accentSoft,
-  },
+  proofCta: { marginTop: space.xs, alignItems: 'flex-start', alignSelf: 'stretch' },
 });

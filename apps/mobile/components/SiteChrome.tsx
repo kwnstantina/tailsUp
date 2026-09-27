@@ -1,11 +1,16 @@
 // =============================================================================
-// SiteChrome — the public site header/nav + footer (FR-W9, DS-4)
+// SiteChrome — the public site header/nav + footer
 //
-// Sticky top nav (web): brand + the five page links + a "Κλείσε αξιολόγηση" CTA
-// + the EL/EN LanguageToggle. Deep-green footer with the practice name and
-// clearly-marked placeholder contact details (brand "TailsUp"; [διεύθυνση] /
-// [τηλέφωνο] / [email] / [ώρες] — no fake-real values, per the user decision).
-// Nav labels are bilingual, driven by useLang(). Wraps the page <Slot/>.
+// Sticky top nav (web): the logo mark + wordmark, the five page links, the
+// orange CTA pill and the EL/EN toggle. Deep-green footer with the practice
+// name and clearly-marked placeholder contact details (no fake-real values,
+// per the user decision). Wraps the page <Slot/>.
+//
+// In the playful direction the header is a floating cream bar rather than a
+// ruled one — a hairline under a cream page reads as a seam, so the separation
+// comes from a soft shadow on web and the mint pill on the active link. The
+// footer takes a 40px top radius, which is why the page background shows in its
+// corners; that is deliberate, not a gap.
 //
 // Visible focus on every link via Pressable's `focused` branch (quality floor).
 // =============================================================================
@@ -14,6 +19,8 @@ import { Link, usePathname } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, fontFallback, layout, radii, space, type, useResponsive } from '../lib/theme';
 import { LanguageToggle, useLang, type Lang } from '../lib/i18n';
+import { LogoMark, LogoMarkOnDark, Paw } from './ui';
+import { practice } from '../lib/site-content';
 
 type Href = '/' | '/about' | '/services' | '/results' | '/contact' | '/booking';
 
@@ -31,28 +38,22 @@ const NAV: NavItem[] = [
   { href: '/contact', el: 'Επικοινωνία', en: 'Contact' },
 ];
 
-const CTA = { el: 'Κλείσε αξιολόγηση', en: 'Book an assessment' } as const;
+const CTA = { el: 'Πρώτη γνωριμία', en: 'Book a first hello' } as const;
 
 const FOOTER = {
   el: {
-    tagline: 'Επαγγελματική, ήρεμη, μετρήσιμη εκπαίδευση σκύλων.',
+    tagline: 'Ήρεμη εκπαίδευση σκύλων, χωρίς εκφοβισμό — και με πρόοδο που φαίνεται.',
     contact: 'Επικοινωνία',
     hours: 'Ώρες',
-    address: '[διεύθυνση], Αθήνα',
-    phone: '[τηλέφωνο]',
-    email: '[email]',
-    hoursValue: '[ώρες]',
     rights: 'Με επιφύλαξη παντός δικαιώματος.',
+    madeWith: 'Φτιαγμένο για σκύλους που τα πάνε καλύτερα απ’ όσο νομίζουν.',
   },
   en: {
-    tagline: 'Calm, professional, measurable dog training.',
+    tagline: 'Calm, force-free dog training — with progress you can actually see.',
     contact: 'Contact',
     hours: 'Hours',
-    address: '[address], Athens',
-    phone: '[phone]',
-    email: '[email]',
-    hoursValue: '[hours]',
     rights: 'All rights reserved.',
+    madeWith: 'Made for dogs who are doing better than they think.',
   },
 } as const;
 
@@ -85,7 +86,16 @@ function Header() {
       style={[
         styles.header,
         // Sticky header on web (RN has no sticky; apply via Platform.select).
-        Platform.select({ web: { position: 'sticky', top: 0, zIndex: 100 } as object, default: {} }),
+        // The soft shadow replaces the hairline — see the header note.
+        Platform.select({
+          web: {
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            boxShadow: '0 1px 0 rgba(43,58,49,0.06), 0 6px 18px -14px rgba(43,58,49,0.5)',
+          } as object,
+          default: {},
+        }),
       ]}
     >
       <View style={styles.headerInner}>
@@ -94,7 +104,8 @@ function Header() {
             accessibilityRole="link"
             style={({ focused }) => [styles.brandPress, focused && styles.focusedRing]}
           >
-            <Text style={[styles.brand, fontFallback.display]}>TailsUp</Text>
+            <LogoMark size={32} />
+            <Text style={[styles.brand, fontFallback.display]}>{practice.name}</Text>
           </Pressable>
         </Link>
 
@@ -103,19 +114,7 @@ function Header() {
             {NAV.map((item) => (
               <NavLink key={item.href} item={item} lang={lang} active={pathname === item.href} />
             ))}
-            <Link href="/booking" asChild>
-              <Pressable
-                accessibilityRole="link"
-                style={({ hovered, focused, pressed }) => [
-                  styles.cta,
-                  (hovered || pressed) && styles.ctaHover,
-                  focused && styles.focusedRing,
-                  Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-                ]}
-              >
-                <Text style={[styles.ctaText, fontFallback.body]}>{CTA[lang]}</Text>
-              </Pressable>
-            </Link>
+            <CtaPill lang={lang} />
             <LanguageToggle />
           </View>
         ) : (
@@ -129,25 +128,31 @@ function Header() {
               {NAV.map((item) => (
                 <NavLink key={item.href} item={item} lang={lang} active={pathname === item.href} />
               ))}
-              <Link href="/booking" asChild>
-                <Pressable
-                  accessibilityRole="link"
-                  style={({ hovered, focused, pressed }) => [
-                    styles.cta,
-                    (hovered || pressed) && styles.ctaHover,
-                    focused && styles.focusedRing,
-                    Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-                  ]}
-                >
-                  <Text style={[styles.ctaText, fontFallback.body]}>{CTA[lang]}</Text>
-                </Pressable>
-              </Link>
+              <CtaPill lang={lang} />
             </ScrollView>
             <LanguageToggle />
           </View>
         )}
       </View>
     </View>
+  );
+}
+
+function CtaPill({ lang }: { lang: Lang }) {
+  return (
+    <Link href="/booking" asChild>
+      <Pressable
+        accessibilityRole="link"
+        style={({ hovered, focused, pressed }) => [
+          styles.cta,
+          (hovered || pressed) && styles.ctaHover,
+          focused && styles.focusedRing,
+          Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
+        ]}
+      >
+        <Text style={[styles.ctaText, fontFallback.body]}>{CTA[lang]}</Text>
+      </Pressable>
+    </Link>
   );
 }
 
@@ -159,9 +164,10 @@ function NavLink({ item, lang, active }: { item: NavItem; lang: Lang; active: bo
         accessibilityState={{ selected: active }}
         style={({ hovered, focused, pressed }) => [
           styles.navLink,
+          active && styles.navLinkActive,
+          (hovered || pressed) && !active && styles.navLinkHover,
           focused && styles.focusedRing,
           Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-          (hovered || pressed) && styles.navLinkHover,
         ]}
       >
         <Text style={[styles.navText, fontFallback.body, active && styles.navTextActive]}>
@@ -181,24 +187,34 @@ function Footer() {
     <View style={styles.footer}>
       <View style={[styles.footerInner, isWide ? styles.footerRow : styles.footerCol]}>
         <View style={styles.footerBrandCol}>
-          <Text style={[styles.footerBrand, fontFallback.display]}>TailsUp</Text>
+          <View style={styles.footerBrandRow}>
+            <LogoMarkOnDark size={34} />
+            <Text style={[styles.footerBrand, fontFallback.display]}>{practice.name}</Text>
+          </View>
           <Text style={[styles.footerTagline, fontFallback.body]}>{f.tagline}</Text>
         </View>
 
-        <View style={styles.footerCol2}>
+        <View style={styles.footerLinkCol}>
           <Text style={[styles.footerHeading, fontFallback.body]}>{f.contact}</Text>
-          <Text style={[styles.footerLine, fontFallback.body]}>{f.address}</Text>
-          <Text style={[styles.footerLine, fontFallback.body]}>{f.phone}</Text>
-          <Text style={[styles.footerLine, fontFallback.body]}>{f.email}</Text>
+          <Text style={[styles.footerLine, fontFallback.body]}>{practice.address[lang]}</Text>
+          <Text style={[styles.footerLine, fontFallback.body]}>{practice.phone}</Text>
+          <Text style={[styles.footerLine, fontFallback.body]}>{practice.email}</Text>
         </View>
 
-        <View style={styles.footerCol2}>
+        <View style={styles.footerLinkCol}>
           <Text style={[styles.footerHeading, fontFallback.body]}>{f.hours}</Text>
-          <Text style={[styles.footerLine, fontFallback.body]}>{f.hoursValue}</Text>
+          <Text style={[styles.footerLine, fontFallback.body]}>{practice.hours[lang]}</Text>
         </View>
       </View>
+
       <View style={styles.footerBottom}>
-        <Text style={[styles.footerSmall, fontFallback.body]}>© TailsUp · {f.rights}</Text>
+        <View style={styles.footerBottomRow}>
+          <Paw size={18} color={colors.accentSoft} />
+          <Text style={[styles.footerSmall, fontFallback.body]}>{f.madeWith}</Text>
+        </View>
+        <Text style={[styles.footerSmall, fontFallback.body]}>
+          © {practice.name} · {f.rights}
+        </Text>
       </View>
     </View>
   );
@@ -220,18 +236,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  // Header
+  // ── Header ────────────────────────────────────────────────────────────────
   header: {
     backgroundColor: colors.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   headerInner: {
     width: '100%',
     maxWidth: layout.maxWidth,
     alignSelf: 'center',
     paddingHorizontal: space.md,
-    paddingVertical: space.sm,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -239,6 +253,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   brandPress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     borderRadius: radii.base,
     paddingVertical: 4,
     paddingHorizontal: 4,
@@ -247,14 +264,14 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontFamily: fonts.display,
-    fontSize: 22,
-    color: colors.primary,
-    letterSpacing: -0.44,
+    fontSize: 24,
+    color: colors.text,
+    letterSpacing: -0.4,
   },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
+    gap: 6,
     flexWrap: 'wrap',
   },
   narrowNav: {
@@ -266,51 +283,63 @@ const styles = StyleSheet.create({
   narrowNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xs,
+    gap: 6,
     paddingRight: space.sm,
   },
   navLink: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: radii.base,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   navLinkHover: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.mintSoft,
+  },
+  navLinkActive: {
+    backgroundColor: colors.mintSoft,
   },
   navText: {
     ...type.body,
     color: colors.textMuted,
+    fontFamily: fonts.bodySemiBold,
   },
   navTextActive: {
     color: colors.primary,
   },
+
+  // The header CTA is the same contract as PrimaryButton: bright orange fill,
+  // DARK label (5.1:1). Off-white on this orange is 2.0:1 and fails.
   cta: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.base,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    backgroundColor: colors.accentBright,
+    borderRadius: radii.pill,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderWidth: 2,
     borderColor: 'transparent',
+    marginLeft: 4,
   },
   ctaHover: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: '#DE8330',
   },
   ctaText: {
     ...type.body,
-    color: colors.bg,
+    color: colors.text,
+    fontFamily: fonts.bodyBold,
   },
   focusedRing: {
     borderColor: colors.accent,
   },
 
-  // Footer
+  // ── Footer ────────────────────────────────────────────────────────────────
   footer: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primarySoft,
     paddingTop: space.xl,
     paddingBottom: space.lg,
     marginTop: 'auto',
+    // The page background shows in these corners on purpose.
+    borderTopLeftRadius: radii.band,
+    borderTopRightRadius: radii.band,
   },
   footerInner: {
     width: '100%',
@@ -328,20 +357,25 @@ const styles = StyleSheet.create({
   },
   footerBrandCol: {
     gap: space.xs,
-    maxWidth: 360,
+    maxWidth: 380,
   },
-  footerCol2: {
+  footerBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  footerLinkCol: {
     gap: 6,
   },
   footerBrand: {
     fontFamily: fonts.display,
-    fontSize: 24,
-    color: colors.bg,
-    letterSpacing: -0.48,
+    fontSize: 26,
+    color: colors.onDark,
+    letterSpacing: -0.5,
   },
   footerTagline: {
     ...type.body,
-    color: colors.accentSoft,
+    color: colors.onDarkMuted,
   },
   footerHeading: {
     ...type.eyebrow,
@@ -350,7 +384,7 @@ const styles = StyleSheet.create({
   },
   footerLine: {
     ...type.body,
-    color: colors.bg,
+    color: colors.onDark,
   },
   footerBottom: {
     width: '100%',
@@ -360,10 +394,16 @@ const styles = StyleSheet.create({
     marginTop: space.lg,
     paddingTop: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(250,247,240,0.2)',
+    borderTopColor: 'rgba(255,252,245,0.2)',
+    gap: 6,
+  },
+  footerBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
   footerSmall: {
     ...type.caption,
-    color: colors.accentSoft,
+    color: colors.onDarkFaint,
   },
 });

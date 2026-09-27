@@ -99,7 +99,9 @@ export function ProgressCurve({ data, width, height = 220, style }: ProgressCurv
   const plotW = Math.max(0, w - pad * 2);
   const plotH = Math.max(0, height - padTop - padBottom);
 
-  const gold = colors.accent;
+  // The bright orange, not the text-safe one: this is a stroke on a deep-green
+  // panel, where #B45D14 goes muddy and loses the line.
+  const gold = colors.accentBright;
 
   // Map a value to a screen point. Flat-series guard: min === max → mid line.
   let body: React.ReactNode = null;

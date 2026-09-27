@@ -19,10 +19,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
 
         {/* Site-wide default — per-page <Head> overrides title/description. */}
-        <title>TailsUp — Επαγγελματική Εκπαίδευση Σκύλων</title>
+        <title>TailsUp — Εκπαίδευση σκύλων χωρίς εκφοβισμό</title>
         <meta
           name="description"
-          content="Επαγγελματική εκπαίδευση σκύλων στην Αθήνα. Αποδεδειγμένα αποτελέσματα."
+          content="Ήρεμη, μεθοδική εκπαίδευση σκύλων στην Αθήνα. Πρώτη γνωριμία χωρίς δέσμευση — και πρόοδος που φαίνεται."
         />
 
         <link rel="icon" href="/favicon.ico" />

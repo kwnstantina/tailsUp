@@ -147,39 +147,43 @@ function LangOption({
   );
 }
 
+// Pill group to match the rest of the playful nav — a warm border rather than
+// the translucent `border` grey, and the mint wash for both hover and the
+// active option (the weight change is what separates them, not the fill).
 const styles = StyleSheet.create({
   group: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.base,
+    borderWidth: 2,
+    borderColor: colors.fieldBorder,
+    borderRadius: radii.pill,
     overflow: 'hidden',
   },
   divider: {
-    width: 1,
+    width: 2,
     alignSelf: 'stretch',
-    backgroundColor: colors.border,
+    backgroundColor: colors.fieldBorder,
   },
   option: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   optionHover: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.mintSoft,
   },
   optionFocused: {
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: colors.accentBright,
     margin: -1,
   },
   optionText: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.bodySemiBold,
     fontSize: 12.5,
     letterSpacing: 1,
     color: colors.textMuted,
   },
   optionTextActive: {
     color: colors.primary,
+    fontFamily: fonts.bodyBold,
   },
 });

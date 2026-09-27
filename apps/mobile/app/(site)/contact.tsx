@@ -1,27 +1,48 @@
 // =============================================================================
 // (site)/contact.tsx — Contact / Επικοινωνία  (route: /contact)
 //
-// Where to find us + how to reach us: address, opening hours, phone, email
-// (all clearly-marked placeholders, per the user decision) in Cards, the keyless
-// <PracticeMap/>, and the LEAD FORM (name, contact, message) → createLead with
-// source 'website-contact'.
+// Where to find us and how to reach us: the practice details on a tinted card
+// with drawn icons, the keyless <PracticeMap/>, and the LEAD FORM (name,
+// contact, message) → createLead with source 'website-contact'.
 //
-// The form uses a discriminated Status union (idle/pending/success/error)
-// mirroring the Phase 1 health screen: inline validation, disabled-while-
-// submitting, a clear success confirmation, and the ApiError message on failure.
-// Visible focus on every input; prefers-reduced-motion is respected (no entrance
-// animation is used). Bilingual via useLang().
+// The form keeps its discriminated Status union (idle/pending/success/error):
+// inline validation, disabled-while-submitting, a clear success confirmation,
+// and the ApiError message on failure. The shared <Field/> owns the focus ring.
+//
+// Address, phone, email and hours are clearly-marked placeholders (the user
+// decision) — no invented values that could be mistaken for real ones.
 // =============================================================================
 
 import { useState } from 'react';
 import Head from 'expo-router/head';
-import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { CreateLeadInput } from '@tailsup/shared';
-import { Card, Eyebrow, PrimaryButton, Section } from '../../components/ui';
+import {
+  Card,
+  Col,
+  Eyebrow,
+  Field,
+  Grid,
+  HeadlineRow,
+  Highlight,
+  IconClock,
+  IconMail,
+  IconPhone,
+  IconPin,
+  Paw,
+  PrimaryButton,
+  Section,
+  Stack,
+  Sticker,
+  TINTS,
+  Wave,
+  Wrap,
+} from '../../components/ui';
 import { PracticeMap } from '../../components/PracticeMap';
-import { colors, fontFallback, radii, space, type, useResponsive } from '../../lib/theme';
+import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { ApiError, createLead } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
+import { practice } from '../../lib/site-content';
 
 type SubmitStatus =
   | { kind: 'idle' }
@@ -33,66 +54,64 @@ const copy = {
   el: {
     head: {
       title: 'Επικοινωνία — TailsUp',
-      desc: 'Βρείτε μας στην Αθήνα ή στείλτε μας μήνυμα μέσω της φόρμας επικοινωνίας.',
+      desc: 'Βρείτε μας στην Αθήνα ή γράψτε μας δυο γραμμές για τον σκύλο σας. Απαντάμε σε άνθρωπο, όχι σε αυτόματο.',
     },
     eyebrow: 'Επικοινωνία',
-    title: 'Πού θα μας βρείτε.',
-    intro: 'Ελάτε για μια πρώτη αξιολόγηση ή στείλτε μας ένα μήνυμα — απαντάμε σύντομα.',
-    detailsTitle: 'Στοιχεία',
+    title: { line1: 'Πείτε μας για', mark: 'τον σκύλο σας.', line2: '' },
+    lead:
+      'Δυο-τρεις προτάσεις αρκούν. Ό,τι κι αν κάνει, μάλλον το έχουμε ξανασυναντήσει — και σίγουρα δεν θα μας σοκάρει.',
+    claims: ['Απαντάει άνθρωπος', 'Χωρίς newsletter', 'Χωρίς δέσμευση'],
+    detailsTitle: 'Πού θα μας βρείτε',
     addressLabel: 'Διεύθυνση',
-    address: '[διεύθυνση], Αθήνα',
     phoneLabel: 'Τηλέφωνο',
-    phone: '[τηλέφωνο]',
     emailLabel: 'Email',
-    email: '[email]',
-    hoursLabel: 'Ώρες λειτουργίας',
-    hours: '[ώρες]',
+    hoursLabel: 'Ώρες',
     mapLabel: 'TailsUp — τοποθεσία πρακτικής',
-    formTitle: 'Στείλτε μας μήνυμα',
-    nameLabel: 'Όνομα',
+    formTitle: 'Γράψτε μας',
+    nameLabel: 'Πώς σας λένε;',
     namePlaceholder: 'Το όνομά σας',
-    contactLabel: 'Επικοινωνία (email ή τηλέφωνο)',
+    contactLabel: 'Πού να απαντήσουμε;',
     contactPlaceholder: 'email ή τηλέφωνο',
-    messageLabel: 'Μήνυμα (προαιρετικά)',
-    messagePlaceholder: 'Πείτε μας λίγα λόγια για τον σκύλο σας',
-    submit: 'Αποστολή',
-    nameRequired: 'Συμπληρώστε το όνομά σας.',
-    contactRequired: 'Συμπληρώστε ένα email ή τηλέφωνο.',
-    successTitle: 'Λάβαμε το μήνυμά σας.',
-    successBody: 'Θα επικοινωνήσουμε μαζί σας σύντομα. Ευχαριστούμε!',
+    messageLabel: 'Τι συμβαίνει; (προαιρετικά)',
+    messagePlaceholder: 'Π.χ. «Τραβάει σαν τρένο και γαβγίζει σε κάθε σκύλο»',
+    submit: 'Στείλ’ το',
+    nameRequired: 'Πείτε μας πώς σας λένε.',
+    contactRequired: 'Χρειαζόμαστε ένα email ή τηλέφωνο για να απαντήσουμε.',
+    successTitle: 'Το λάβαμε.',
+    successBody: `Θα σας απαντήσουμε ${practice.replyTime.el}. Ευχαριστούμε!`,
     errorPrefix: 'Κάτι πήγε στραβά: ',
+    replyNote: `Απαντάμε συνήθως ${practice.replyTime.el}.`,
   },
   en: {
     head: {
       title: 'Contact — TailsUp',
-      desc: 'Find us in Athens or send us a message through the contact form.',
+      desc: 'Find us in Athens, or send us a couple of lines about your dog. A person replies, not an autoresponder.',
     },
     eyebrow: 'Contact',
-    title: 'Where to find us.',
-    intro: 'Come in for a first assessment or send us a message — we reply promptly.',
-    detailsTitle: 'Details',
+    title: { line1: 'Tell us about', mark: 'your dog.', line2: '' },
+    lead:
+      'A few sentences is plenty. Whatever they’re doing, we’ve almost certainly met it before — and nothing you write is going to shock us.',
+    claims: ['A person replies', 'No newsletter', 'No strings'],
+    detailsTitle: 'Where to find us',
     addressLabel: 'Address',
-    address: '[address], Athens',
     phoneLabel: 'Phone',
-    phone: '[phone]',
     emailLabel: 'Email',
-    email: '[email]',
-    hoursLabel: 'Opening hours',
-    hours: '[hours]',
+    hoursLabel: 'Hours',
     mapLabel: 'TailsUp — practice location',
-    formTitle: 'Send us a message',
-    nameLabel: 'Name',
+    formTitle: 'Drop us a line',
+    nameLabel: 'What’s your name?',
     namePlaceholder: 'Your name',
-    contactLabel: 'Contact (email or phone)',
+    contactLabel: 'Where should we reply?',
     contactPlaceholder: 'email or phone',
-    messageLabel: 'Message (optional)',
-    messagePlaceholder: 'Tell us a little about your dog',
-    submit: 'Send',
-    nameRequired: 'Please enter your name.',
-    contactRequired: 'Please enter an email or phone.',
-    successTitle: 'We received your message.',
-    successBody: 'We will be in touch soon. Thank you!',
+    messageLabel: 'What’s going on? (optional)',
+    messagePlaceholder: 'e.g. "Pulls like a train and barks at every dog"',
+    submit: 'Send it',
+    nameRequired: 'Let us know what to call you.',
+    contactRequired: 'We need an email or phone to reply to.',
+    successTitle: 'Got it.',
+    successBody: `We’ll come back to you ${practice.replyTime.en}. Thank you!`,
     errorPrefix: 'Something went wrong: ',
+    replyNote: `We usually reply ${practice.replyTime.en}.`,
   },
 } as const;
 
@@ -100,6 +119,7 @@ export default function ContactPage() {
   const { lang } = useLang();
   const c = copy[lang];
   const { isWide } = useResponsive();
+  const ty = useType();
 
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -135,6 +155,8 @@ export default function ContactPage() {
     }
   };
 
+  const h1 = [ty.h1, fontFallback.display, styles.ink];
+
   return (
     <>
       <Head>
@@ -144,247 +166,200 @@ export default function ContactPage() {
         <meta property="og:description" content={c.head.desc} />
       </Head>
 
-      {/* ── Intro ── */}
-      <Section>
-        <View style={styles.intro}>
+      {/* ── Intro ───────────────────────────────────────────────────────── */}
+      <Section spacing="normal">
+        <Stack gap={space.md} style={styles.intro}>
           <Eyebrow>{c.eyebrow}</Eyebrow>
-          <Text style={[styles.h1, fontFallback.display]}>{c.title}</Text>
-          <Text style={[styles.lead, fontFallback.body]}>{c.intro}</Text>
-        </View>
+          <View style={styles.headline}>
+            <Text style={h1}>{c.title.line1}</Text>
+            <HeadlineRow>
+              <Highlight>
+                <Text style={h1}>{c.title.mark}</Text>
+              </Highlight>
+            </HeadlineRow>
+          </View>
+          <Text style={[ty.bodyLg, fontFallback.body, styles.lead]}>{c.lead}</Text>
+          <Wrap gap={12}>
+            {c.claims.map((claim, i) => (
+              <Sticker
+                key={claim}
+                label={claim}
+                tint={(['mint', 'peach', 'coral'] as const)[i % 3]}
+                tick
+                rotate={i % 2 === 0 ? -1.4 : 1.2}
+              />
+            ))}
+          </Wrap>
+        </Stack>
       </Section>
 
-      {/* ── Details + map (left) and the lead form (right) ── */}
-      <Section alt>
-        <View style={[styles.cols, isWide ? styles.colsWide : styles.colsNarrow]}>
-          {/* Left: practice details + map */}
-          <View style={styles.col}>
-            <Card large>
-              <Text style={[styles.cardHeading, fontFallback.display]}>{c.detailsTitle}</Text>
-              <Detail label={c.addressLabel} value={c.address} />
-              <Detail label={c.phoneLabel} value={c.phone} />
-              <Detail label={c.emailLabel} value={c.email} />
-              <Detail label={c.hoursLabel} value={c.hours} />
-            </Card>
-            <View style={styles.mapWrap}>
+      <Wave color={colors.bgAlt} height={isWide ? 64 : 36} />
+
+      {/* ── Details + map (left), the lead form (right) ─────────────────── */}
+      <Section alt spacing="tight">
+        <Grid gap={space.lg} align="flex-start">
+          {/* Practice details + map */}
+          <Col weight={1}>
+            <Stack gap={space.md}>
+              <Card tint="mint" large>
+                <Stack gap={space.md}>
+                  <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.detailsTitle}</Text>
+                  <Detail
+                    Icon={IconPin}
+                    label={c.addressLabel}
+                    value={practice.address[lang]}
+                    ty={ty}
+                  />
+                  <Detail Icon={IconPhone} label={c.phoneLabel} value={practice.phone} ty={ty} />
+                  <Detail Icon={IconMail} label={c.emailLabel} value={practice.email} ty={ty} />
+                  <Detail
+                    Icon={IconClock}
+                    label={c.hoursLabel}
+                    value={practice.hours[lang]}
+                    ty={ty}
+                  />
+                </Stack>
+              </Card>
               <PracticeMap label={c.mapLabel} />
-            </View>
-          </View>
+            </Stack>
+          </Col>
 
-          {/* Right: the lead form */}
-          <View style={styles.col}>
-            <Card large>
-              <Text style={[styles.cardHeading, fontFallback.display]}>{c.formTitle}</Text>
+          {/* The lead form */}
+          <Col weight={1}>
+            <Card tint="white" large>
+              <Stack gap={space.md}>
+                <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.formTitle}</Text>
 
-              {status.kind === 'success' ? (
-                <View style={styles.successBox} accessibilityLiveRegion="polite">
-                  <Text style={[styles.successTitle, fontFallback.display]}>{c.successTitle}</Text>
-                  <Text style={[styles.successBody, fontFallback.body]}>{c.successBody}</Text>
-                </View>
-              ) : (
-                <View style={styles.form}>
-                  <Field
-                    label={c.nameLabel}
-                    placeholder={c.namePlaceholder}
-                    value={name}
-                    onChangeText={setName}
-                    editable={!pending}
-                    error={touched ? nameError : undefined}
-                    autoCapitalize="words"
-                  />
-                  <Field
-                    label={c.contactLabel}
-                    placeholder={c.contactPlaceholder}
-                    value={contact}
-                    onChangeText={setContact}
-                    editable={!pending}
-                    error={touched ? contactError : undefined}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                  <Field
-                    label={c.messageLabel}
-                    placeholder={c.messagePlaceholder}
-                    value={message}
-                    onChangeText={setMessage}
-                    editable={!pending}
-                    multiline
-                  />
-
-                  {status.kind === 'error' && (
-                    <Text style={[styles.errorBanner, fontFallback.body]} accessibilityLiveRegion="polite">
-                      {c.errorPrefix}
-                      {status.message}
+                {status.kind === 'success' ? (
+                  <View style={styles.success} accessibilityLiveRegion="polite">
+                    <Paw size={30} />
+                    <Text style={[ty.h3, fontFallback.display, styles.successTitle]}>
+                      {c.successTitle}
                     </Text>
-                  )}
-
-                  <View style={styles.submitWrap}>
-                    <PrimaryButton label={c.submit} onPress={onSubmit} loading={pending} />
+                    <Text style={[ty.body, fontFallback.body, styles.muted]}>{c.successBody}</Text>
                   </View>
-                </View>
-              )}
+                ) : (
+                  <Stack gap={space.md}>
+                    <Field
+                      label={c.nameLabel}
+                      placeholder={c.namePlaceholder}
+                      value={name}
+                      onChangeText={setName}
+                      editable={!pending}
+                      error={touched ? nameError : undefined}
+                      autoCapitalize="words"
+                    />
+                    <Field
+                      label={c.contactLabel}
+                      placeholder={c.contactPlaceholder}
+                      value={contact}
+                      onChangeText={setContact}
+                      editable={!pending}
+                      error={touched ? contactError : undefined}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                    <Field
+                      label={c.messageLabel}
+                      placeholder={c.messagePlaceholder}
+                      value={message}
+                      onChangeText={setMessage}
+                      editable={!pending}
+                      multiline
+                    />
+
+                    {status.kind === 'error' && (
+                      <Text
+                        style={[ty.body, fontFallback.body, styles.errorBanner]}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {c.errorPrefix}
+                        {status.message}
+                      </Text>
+                    )}
+
+                    <PrimaryButton label={c.submit} onPress={onSubmit} loading={pending} block />
+                    <Text style={[ty.body, fontFallback.body, styles.replyNote]}>
+                      {c.replyNote}
+                    </Text>
+                  </Stack>
+                )}
+              </Stack>
             </Card>
-          </View>
-        </View>
+          </Col>
+        </Grid>
       </Section>
     </>
   );
 }
 
-// ── Detail line (label + placeholder value) ──────────────────────────────────
-function Detail({ label, value }: { label: string; value: string }) {
+// ── One detail line: drawn icon, label, placeholder value ────────────────────
+function Detail({
+  Icon,
+  label,
+  value,
+  ty,
+}: {
+  Icon: (props: { size?: number; color?: string }) => React.ReactElement;
+  label: string;
+  value: string;
+  ty: ReturnType<typeof useType>;
+}) {
   return (
     <View style={styles.detail}>
-      <Text style={[styles.detailLabel, fontFallback.body]}>{label}</Text>
-      <Text style={[styles.detailValue, fontFallback.body]}>{value}</Text>
-    </View>
-  );
-}
-
-// ── Field — a labelled TextInput with visible focus + inline error ────────────
-function Field({
-  label,
-  error,
-  multiline = false,
-  ...inputProps
-}: {
-  label: string;
-  error?: string;
-  multiline?: boolean;
-} & React.ComponentProps<typeof TextInput>) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.fieldLabel, fontFallback.body]}>{label}</Text>
-      <TextInput
-        {...inputProps}
-        multiline={multiline}
-        placeholderTextColor={colors.textMuted}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={[
-          styles.input,
-          multiline && styles.inputMultiline,
-          fontFallback.body,
-          focused && styles.inputFocused,
-          error != null && styles.inputError,
-          // Web: remove the default UA outline (we draw our own copper ring).
-          Platform.select({ web: { outlineStyle: 'none' } as object, default: {} }),
-        ]}
-      />
-      {error != null && <Text style={[styles.fieldError, fontFallback.body]}>{error}</Text>}
+      <View style={styles.detailIcon}>
+        <Icon size={20} color={TINTS.mint.iconInk} />
+      </View>
+      <View style={styles.detailText}>
+        <Text style={[ty.body, fontFallback.body, styles.detailLabel]}>{label}</Text>
+        <Text style={[ty.body, fontFallback.body, styles.detailValue]}>{value}</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Intro
-  intro: {
-    maxWidth: 720,
-    gap: space.md,
-  },
-  h1: {
-    ...type.h1,
-    color: colors.text,
-  },
-  lead: {
-    ...type.bodyLg,
-    color: colors.textMuted,
-  },
+  ink: { color: colors.text },
+  muted: { color: colors.textMuted },
 
-  // Two-column layout
-  cols: {
-    gap: space.lg,
-  },
-  colsWide: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  colsNarrow: {
-    flexDirection: 'column',
-  },
-  col: {
-    flex: 1,
-    gap: space.md,
-  },
-  cardHeading: {
-    ...type.h3,
-    color: colors.text,
-    marginBottom: space.sm,
-  },
+  intro: { maxWidth: 720 },
+  headline: { gap: 2 },
+  lead: { color: colors.textMuted, maxWidth: 560 },
 
   // Details
   detail: {
-    marginBottom: space.sm,
-  },
-  detailLabel: {
-    ...type.eyebrow,
-    color: colors.accent,
-    marginBottom: 2,
-  },
-  detailValue: {
-    ...type.body,
-    color: colors.text,
-  },
-  mapWrap: {
-    width: '100%',
-  },
-
-  // Form
-  form: {
-    gap: space.md,
-  },
-  field: {
-    gap: 6,
-  },
-  fieldLabel: {
-    ...type.body,
-    color: colors.text,
-  },
-  input: {
-    ...type.body,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.base,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  inputMultiline: {
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  inputFocused: {
-    borderColor: colors.accent, // visible copper focus ring (quality floor)
-    borderWidth: 2,
-    margin: -1,
-  },
-  inputError: {
-    borderColor: colors.accent,
-  },
-  fieldError: {
-    ...type.caption,
-    color: colors.accent,
-  },
-  errorBanner: {
-    ...type.body,
-    color: colors.accent,
-  },
-  submitWrap: {
+    flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: space.xs,
-  },
-
-  // Success
-  successBox: {
     gap: space.sm,
   },
-  successTitle: {
-    ...type.h3,
+  detailIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailText: { flex: 1, minWidth: 0 },
+  detailLabel: {
     color: colors.primary,
+    fontFamily: fonts.bodyBold,
+    fontSize: 12.5,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  successBody: {
-    ...type.body,
+  detailValue: { color: colors.text },
+
+  // Form feedback
+  errorBanner: { color: colors.danger },
+  replyNote: {
     color: colors.textMuted,
+    fontSize: 13.5,
+    textAlign: 'center',
   },
+  success: {
+    gap: space.xs,
+    alignItems: 'flex-start',
+  },
+  successTitle: { color: colors.primary },
 });
