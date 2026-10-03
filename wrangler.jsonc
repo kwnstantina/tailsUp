@@ -1,0 +1,42 @@
+{
+  // Cloudflare Workers config for the PUBLIC WEB BUILD of apps/mobile.
+  //
+  // This deploys static assets only — there is no Worker script (`main` is
+  // intentionally absent). The Hono API in apps/api is NOT deployed from here;
+  // it runs on Railway (it uses node-postgres, which does not run on Workers).
+  //
+  // WHY THIS FILE EXISTS: Cloudflare's Git integration creates a Worker and runs
+  // `npx wrangler deploy`. Run at the root of an npm-workspaces repo with no
+  // wrangler config, that fails with:
+  //   "The Wrangler application detection logic has been run in the root of a
+  //    workspace instead of targeting a specific project."
+  // This file is what it looks for.
+  //
+  // The dashboard must also be set to build before deploying:
+  //   Build command   npm run build:web -w apps/mobile
+  //   Deploy command  npx wrangler deploy
+  //   Root directory  /
+  // Plain `expo export -p web` is NOT enough — build:web also runs
+  // scripts/post-export.mjs, which emits app-shell.html and 404.html and prunes
+  // the duplicate route-group directories. Skip it and dynamic routes 404.
+
+  // MUST match the Worker name in the Cloudflare dashboard. A mismatch silently
+  // deploys to a DIFFERENT Worker instead of erroring.
+  "name": "tailsup",
+
+  "compatibility_date": "2026-10-03",
+
+  "assets": {
+    // Output of `npm run build:web -w apps/mobile`.
+    "directory": "./apps/mobile/dist",
+
+    // Serve 404.html (post-export.mjs copies Expo's +not-found.html to that
+    // name) with a real 404 status for unmatched paths.
+    //
+    // Deliberately NOT "single-page-application": that answers every unknown URL
+    // with index.html and HTTP 200, which would tell search engines that every
+    // typo'd path is a valid copy of the home page. The dynamic app routes are
+    // handled explicitly in apps/mobile/public/_redirects instead.
+    "not_found_handling": "404-page"
+  }
+}
