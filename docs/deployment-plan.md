@@ -5,15 +5,15 @@
 Target topology (decided 2026-09-27):
 
 ```
-tailsupacademy.com           ->  Cloudflare Pages   (Expo Router static web export)
-api.tailsupacademy.com       ->  Railway            (Hono API, tsx runtime)
+tailsupacademy.gr           ->  Cloudflare Pages   (Expo Router static web export)
+api.tailsupacademy.gr       ->  Railway            (Hono API, tsx runtime)
                          Railway Postgres
                          Cloudflare R2      (media bucket + SEPARATE backups bucket)
                          Resend             (lead notification email)
 iOS / Android        ->  EAS Build -> App Store / Play Store
 ```
 
-Site and API share the registrable domain `tailsupacademy.com` **on purpose** — it keeps the
+Site and API share the registrable domain `tailsupacademy.gr` **on purpose** — it keeps the
 BetterAuth session cookie same-site, so no `SameSite=None` weakening is needed. See
 **W4**; moving the API off this apex later is a breaking change for web login.
 
@@ -90,29 +90,29 @@ none can shadow a pre-rendered marketing page.
 
 ### W1. Domain + accounts — *do first, long lead times, safe during development*
 
-Domain is **tailsupacademy.com**, registered at **Papaki** (2026-09-27).
+Domain is **tailsupacademy.gr**, registered at **Papaki** (2026-09-27).
 
 Papaki stays the REGISTRAR; Cloudflare becomes the DNS HOST. This is required because
 Cloudflare Pages serves the apex domain, and apex records need CNAME flattening that
 most registrars do not offer.
 
-- [ ] Free Cloudflare account -> **Add a site** -> `tailsupacademy.com`
+- [ ] Free Cloudflare account -> **Add a site** -> `tailsupacademy.gr`
 - [ ] **Export the existing Papaki DNS records BEFORE switching.** If any email runs on
       this domain through Papaki, moving nameservers without recreating the `MX` records
       kills it. Cloudflare auto-scans and imports records, but verify the list rather
       than trusting it — this is the one irreversible-feeling mistake in the whole setup
 - [ ] Set Cloudflare's two nameservers in the Papaki control panel. Propagation is
       usually under an hour, occasionally up to 24
-- [ ] Cloudflare Pages project -> custom domain `tailsupacademy.com` + `www`
+- [ ] Cloudflare Pages project -> custom domain `tailsupacademy.gr` + `www`
       (Pages creates these DNS records itself)
-- [ ] Railway project: Postgres + API service -> custom domain `api.tailsupacademy.com`
+- [ ] Railway project: Postgres + API service -> custom domain `api.tailsupacademy.gr`
       (`CNAME` + `TXT` to Railway's targets, **proxy ON** — Railway will not associate
       the domain with the proxy off)
 - [ ] **Cloudflare SSL/TLS mode -> `Full`.** NOT `Flexible` (Cloudflare sends plain HTTP,
       Railway redirects to HTTPS, infinite redirect loop) and NOT `Full (Strict)` (fails
       during Railway certificate renewal windows). This one costs hours to diagnose
 - [ ] Cloudflare R2: media bucket **and a separate backups bucket** (never the same one)
-- [ ] Resend account, verify `tailsupacademy.com` and add its SPF/DKIM records in
+- [ ] Resend account, verify `tailsupacademy.gr` and add its SPF/DKIM records in
       Cloudflare. Do this early — verification is not instant, and `RESEND_FROM` is
       useless until it passes (unverified = mail only reaches the account owner)
 
@@ -137,7 +137,7 @@ most registrars do not offer.
       or Neon does
 
 ### W4. Auth cookie — *verify; probably no change* ⚠️ UNVERIFIED
-With `tailsupacademy.com` + `api.tailsupacademy.com` on one registrable domain, the site's fetches are
+With `tailsupacademy.gr` + `api.tailsupacademy.gr` on one registrable domain, the site's fetches are
 cross-**origin** but same-**site**, so the default `SameSite=Lax` session cookie should be
 sent; and BetterAuth should mark the cookie `Secure` because `BETTER_AUTH_URL` is https.
 
@@ -153,7 +153,7 @@ moves to a different registrable domain (e.g. `*.up.railway.app`), web login bre
 The browser PUTs directly to R2 from the site origin, so the **media** bucket needs:
 
 ```
-AllowedOrigins: https://tailsupacademy.com   (+ http://localhost:8081 for dev)
+AllowedOrigins: https://tailsupacademy.gr   (+ http://localhost:8081 for dev)
 AllowedMethods: PUT, GET
 AllowedHeaders: content-type
 ```
@@ -232,7 +232,7 @@ Ordered by what blocks what:
 ### M4. `eas.json` + EAS project
 - [ ] `eas init` to create and link a project id (lands in `extra.eas.projectId`)
 - [ ] `development` / `preview` / `production` profiles
-- [ ] `production` must set `EXPO_PUBLIC_API_URL=https://api.tailsupacademy.com`
+- [ ] `production` must set `EXPO_PUBLIC_API_URL=https://api.tailsupacademy.gr`
 
 ### M5. `expo-updates` — *decide before first release*
 - [ ] Not installed. Optional, but OTA update channels are baked into the binary at build
@@ -266,9 +266,9 @@ Optional with a default, **but the default silently misbehaves in production**:
 
 | Variable | Default | Production value |
 | --- | --- | --- |
-| `BETTER_AUTH_URL` | `http://localhost:<PORT>` | `https://api.tailsupacademy.com` |
-| `ALLOWED_ORIGINS` | localhost dev origins | `https://tailsupacademy.com` |
-| `RESEND_FROM` | `onboarding@resend.dev` (owner-only delivery) | `TailsUp <leads@tailsupacademy.com>` |
+| `BETTER_AUTH_URL` | `http://localhost:<PORT>` | `https://api.tailsupacademy.gr` |
+| `ALLOWED_ORIGINS` | localhost dev origins | `https://tailsupacademy.gr` |
+| `RESEND_FROM` | `onboarding@resend.dev` (owner-only delivery) | `TailsUp <leads@tailsupacademy.gr>` |
 | `PRACTICE_TRAINER_ID` | sole/oldest trainer row | the real trainer id |
 
 Lazily read — API boots without them, feature degrades cleanly:
@@ -323,8 +323,8 @@ Work paused here deliberately — feature development is still in progress, and 
 left in Track 1 / Track 2 is better done once the code settles.
 
 **Where we stopped:** collecting environment variable values. Question 1 is ANSWERED
-(2026-09-27): the domain is **tailsupacademy.com**, registered at **Papaki**. Site on the
-apex, API on `api.tailsupacademy.com` — one registrable domain, so the same-site cookie
+(2026-09-27): the domain is **tailsupacademy.gr**, registered at **Papaki**. Site on the
+apex, API on `api.tailsupacademy.gr` — one registrable domain, so the same-site cookie
 reasoning in W4 holds unchanged. Still open: whether `www` should resolve too (it changes
 `ALLOWED_ORIGINS`, and a missing origin there fails CORS silently rather than loudly).
 
@@ -334,7 +334,7 @@ Next up is W1 — the Papaki -> Cloudflare nameserver move, which gates everythi
 
 | # | Value | Notes |
 | --- | --- | --- |
-| 1 | ~~Domain~~ -> tailsupacademy.com (Papaki). `www` decision still open |
+| 1 | ~~Domain~~ -> tailsupacademy.gr (Papaki). `www` decision still open |
 | 2 | `R2_BUCKET` | media bucket name |
 | 3 | `R2_BACKUP_BUCKET` | must differ from the media bucket |
 | 4 | `RESEND_FROM` | needs a Resend-verified domain |
