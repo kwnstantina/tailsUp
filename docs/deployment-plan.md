@@ -5,7 +5,7 @@
 Target topology (decided 2026-09-27):
 
 ```
-tailsupacademy.gr           ->  Cloudflare Pages   (Expo Router static web export)
+tailsupacademy.gr           ->  Cloudflare Workers (static assets; Expo Router web export)
 api.tailsupacademy.gr       ->  Railway            (Hono API, tsx runtime)
                          Railway Postgres
                          Cloudflare R2      (media bucket + SEPARATE backups bucket)
@@ -81,7 +81,7 @@ Rewrites use status `200` (serve, don't redirect) so the address bar keeps the r
 for the client router to read. Every rule is a specific path, never a catch-all splat, so
 none can shadow a pre-rendered marketing page.
 
-**Use `npm run build:web -w apps/mobile` as the Cloudflare Pages build command** — plain
+**Use `npm run build:web -w apps/mobile` as the Cloudflare build command** — plain
 `expo export -p web` skips the post-export step and reintroduces the 404s.
 
 ---
@@ -93,8 +93,8 @@ none can shadow a pre-rendered marketing page.
 Domain is **tailsupacademy.gr**, registered at **Papaki** (2026-09-27).
 
 Papaki stays the REGISTRAR; Cloudflare becomes the DNS HOST. This is required because
-Cloudflare Pages serves the apex domain, and apex records need CNAME flattening that
-most registrars do not offer.
+Cloudflare serves the apex domain, and apex records need CNAME flattening that most
+registrars do not offer.
 
 - [ ] Free Cloudflare account -> **Add a site** -> `tailsupacademy.gr`
 - [ ] **Export the existing Papaki DNS records BEFORE switching.** If any email runs on
@@ -103,8 +103,10 @@ most registrars do not offer.
       than trusting it — this is the one irreversible-feeling mistake in the whole setup
 - [ ] Set Cloudflare's two nameservers in the Papaki control panel. Propagation is
       usually under an hour, occasionally up to 24
-- [ ] Cloudflare Pages project -> custom domain `tailsupacademy.gr` + `www`
-      (Pages creates these DNS records itself)
+- [ ] Cloudflare Worker (static assets) -> custom domain `tailsupacademy.gr` + `www`
+      (Cloudflare creates these DNS records itself). Config lives in `wrangler.jsonc`
+      at the repo root; dashboard needs build command `npm run build:web -w apps/mobile`,
+      deploy command `npx wrangler deploy`, root directory `/`
 - [ ] Railway project: Postgres + API service -> custom domain `api.tailsupacademy.gr`
       (`CNAME` + `TXT` to Railway's targets, **proxy ON** — Railway will not associate
       the domain with the proxy off)
