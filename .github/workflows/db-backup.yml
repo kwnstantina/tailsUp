@@ -38,11 +38,25 @@
 name: db-backup
 
 on:
-  schedule:
-    # Daily at 03:00 UTC. Cron is always UTC on GitHub Actions.
-    - cron: '0 3 * * *'
-  # Allows running the backup on demand from the Actions tab once the
-  # secrets above are configured.
+  # ── SCHEDULE DISABLED 2026-10-04 — RE-ENABLE BEFORE LAUNCH ──────────────────
+  # There is no production database yet and none of the secrets above are set,
+  # so every nightly run failed. A workflow that always fails is worse than no
+  # workflow: it emails on each run and trains you to ignore red CI, which is
+  # exactly when a real failure slips past.
+  #
+  # TO RE-ENABLE (do this as part of W6 in docs/deployment-plan.md, once Railway
+  # Postgres exists and the five secrets are configured):
+  #   1. confirm the server major and set PG_MAJOR below to match
+  #   2. run it once manually via workflow_dispatch and confirm an object lands
+  #      in the R2 backups bucket
+  #   3. uncomment the two lines below
+  #
+  # schedule:
+  #   # Daily at 03:00 UTC. Cron is always UTC on GitHub Actions.
+  #   - cron: '0 3 * * *'
+
+  # Manual runs stay available — this is how you test the backup once the
+  # secrets are in place, before trusting it on a schedule.
   workflow_dispatch: {}
 
 # No write access to repo contents is needed for a backup job.
