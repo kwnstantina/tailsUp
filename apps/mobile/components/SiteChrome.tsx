@@ -12,11 +12,35 @@
 // footer takes a 40px top radius, which is why the page background shows in its
 // corners; that is deliberate, not a gap.
 //
-// Visible focus on every link via Pressable's `focused` branch (quality floor).
+// The nav links are separated by hairline VERTICAL RULES, not by whitespace
+// alone: five Greek link labels at this size sit close enough that a reader
+// scans them as one run of words. One rule between each pair (never around the
+// CTA or the EL/EN toggle — those are already their own shapes) is what makes
+// the row read as five separate targets.
+//
+// Visible focus on every link via the `focused` branch (quality floor).
+//
+// WHY THE INTERACTION STATE IS LOCAL `useState` AND NOT Pressable's STYLE
+// FUNCTION: under `<Link asChild>` the child goes through expo-router's Slot,
+// which is Radix's Slot, and Radix merges the style prop as
+// `{ ...slotStyle, ...childStyle }`. Spreading a FUNCTION yields `{}` — so a
+// `style={({hovered}) => [...]}` child silently loses every style it has. That
+// is what flattened this header's padding and killed the orange CTA fill. The
+// style prop here must stay a FLAT OBJECT (`StyleSheet.flatten`), so hover /
+// focus / press are tracked by hand instead.
 // =============================================================================
 
+import React, { useState } from 'react';
 import { Link, usePathname } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { colors, fonts, fontFallback, layout, radii, space, type, useResponsive } from '../lib/theme';
 import { LanguageToggle, useLang, type Lang } from '../lib/i18n';
 import { LogoMark, LogoMarkOnDark, Paw } from './ui';
@@ -76,9 +100,56 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Hover / focus / press tracked by hand, plus the handler props to spread on
+ * the Pressable. See the Slot note at the top of the file for why Pressable's
+ * own style-function cannot be used inside `<Link asChild>`.
+ */
+function useInteraction() {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  return {
+    hovered,
+    focused,
+    pressed,
+    handlers: {
+      onHoverIn: () => setHovered(true),
+      onHoverOut: () => setHovered(false),
+      onFocus: () => setFocused(true),
+      onBlur: () => setFocused(false),
+      onPressIn: () => setPressed(true),
+      onPressOut: () => setPressed(false),
+    },
+  };
+}
+
+/** Flattened so Radix's Slot merge keeps it — never pass an array or function. */
+function flat(...parts: (ViewStyle | false | undefined)[]): ViewStyle {
+  return StyleSheet.flatten(parts.filter(Boolean) as ViewStyle[]);
+}
+
+/**
+ * The hairline rule between two nav links. Decorative — it carries no meaning
+ * a screen reader needs, so it is hidden from the accessibility tree.
+ */
+function NavDivider() {
+  return <View style={styles.navDivider} accessibilityElementsHidden importantForAccessibility="no" />;
+}
+
+/**
+ * The full nav row (brand + five ruled links + CTA + EL/EN) measures ~998px.
+ * `md` (768) is therefore the wrong switch for THIS row — between 768 and 1060
+ * it wrapped the links onto a second line under the brand. Below 1060 the
+ * compact scrolling nav is the better layout, so the header takes its own
+ * break rather than borrowing the page one.
+ */
+const FULL_NAV_WIDTH = 1060;
+
 function Header() {
   const { lang } = useLang();
-  const { isWide } = useResponsive();
+  const { width } = useResponsive();
+  const fullNav = width >= FULL_NAV_WIDTH;
   const pathname = usePathname();
 
   return (
@@ -99,21 +170,18 @@ function Header() {
       ]}
     >
       <View style={styles.headerInner}>
-        <Link href="/" asChild>
-          <Pressable
-            accessibilityRole="link"
-            style={({ focused }) => [styles.brandPress, focused && styles.focusedRing]}
-          >
-            <LogoMark size={32} />
-            <Text style={[styles.brand, fontFallback.display]}>{practice.name}</Text>
-          </Pressable>
-        </Link>
+        <BrandLink />
 
-        {isWide ? (
+        {fullNav ? (
           <View style={styles.navRow}>
-            {NAV.map((item) => (
-              <NavLink key={item.href} item={item} lang={lang} active={pathname === item.href} />
-            ))}
+            <View style={styles.navLinks}>
+              {NAV.map((item, i) => (
+                <React.Fragment key={item.href}>
+                  {i > 0 && <NavDivider />}
+                  <NavLink item={item} lang={lang} active={pathname === item.href} />
+                </React.Fragment>
+              ))}
+            </View>
             <CtaPill lang={lang} />
             <LanguageToggle />
           </View>
@@ -125,8 +193,11 @@ function Header() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.narrowNavRow}
             >
-              {NAV.map((item) => (
-                <NavLink key={item.href} item={item} lang={lang} active={pathname === item.href} />
+              {NAV.map((item, i) => (
+                <React.Fragment key={item.href}>
+                  {i > 0 && <NavDivider />}
+                  <NavLink item={item} lang={lang} active={pathname === item.href} />
+                </React.Fragment>
               ))}
               <CtaPill lang={lang} />
             </ScrollView>
@@ -138,17 +209,37 @@ function Header() {
   );
 }
 
+const POINTER = Platform.select({ web: { cursor: 'pointer' } as ViewStyle, default: {} });
+
+function BrandLink() {
+  const { focused, handlers } = useInteraction();
+  return (
+    <Link href="/" asChild>
+      <Pressable
+        accessibilityRole="link"
+        {...handlers}
+        style={flat(styles.brandPress, focused && styles.focusedRing, POINTER)}
+      >
+        <LogoMark size={32} />
+        <Text style={[styles.brand, fontFallback.display]}>{practice.name}</Text>
+      </Pressable>
+    </Link>
+  );
+}
+
 function CtaPill({ lang }: { lang: Lang }) {
+  const { hovered, focused, pressed, handlers } = useInteraction();
   return (
     <Link href="/booking" asChild>
       <Pressable
         accessibilityRole="link"
-        style={({ hovered, focused, pressed }) => [
+        {...handlers}
+        style={flat(
           styles.cta,
           (hovered || pressed) && styles.ctaHover,
           focused && styles.focusedRing,
-          Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-        ]}
+          POINTER,
+        )}
       >
         <Text style={[styles.ctaText, fontFallback.body]}>{CTA[lang]}</Text>
       </Pressable>
@@ -157,18 +248,20 @@ function CtaPill({ lang }: { lang: Lang }) {
 }
 
 function NavLink({ item, lang, active }: { item: NavItem; lang: Lang; active: boolean }) {
+  const { hovered, focused, pressed, handlers } = useInteraction();
   return (
     <Link href={item.href} asChild>
       <Pressable
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
-        style={({ hovered, focused, pressed }) => [
+        {...handlers}
+        style={flat(
           styles.navLink,
           active && styles.navLinkActive,
           (hovered || pressed) && !active && styles.navLinkHover,
           focused && styles.focusedRing,
-          Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-        ]}
+          POINTER,
+        )}
       >
         <Text style={[styles.navText, fontFallback.body, active && styles.navTextActive]}>
           {item[lang]}
@@ -249,7 +342,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: space.md,
+    gap: space.sm,
     flexWrap: 'wrap',
   },
   brandPress: {
@@ -271,8 +364,27 @@ const styles = StyleSheet.create({
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    // The CTA pill and the EL/EN toggle are their own shapes already, so they
+    // get breathing room instead of a rule.
+    gap: 12,
     flexWrap: 'wrap',
+  },
+  // The five page links only — the run the vertical rules divide.
+  navLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexWrap: 'wrap',
+  },
+  navDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: colors.border,
+    // 2px of `gap` on each side + this margin ⇒ 7px clear of either label's
+    // pill edge, which keeps the rule from reading as part of a hover pill.
+    marginHorizontal: 3,
+    alignSelf: 'center',
+    flexShrink: 0,
   },
   narrowNav: {
     flexDirection: 'row',
@@ -283,15 +395,18 @@ const styles = StyleSheet.create({
   narrowNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 2,
     paddingRight: space.sm,
   },
   navLink: {
     paddingVertical: 9,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     borderRadius: radii.pill,
     borderWidth: 2,
     borderColor: 'transparent',
+    // Without this the row squeezes the padding away before it wraps, which is
+    // the other half of why these labels used to touch.
+    flexShrink: 0,
   },
   navLinkHover: {
     backgroundColor: colors.mintSoft,
@@ -318,6 +433,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     marginLeft: 4,
+    flexShrink: 0,
   },
   ctaHover: {
     backgroundColor: '#DE8330',
