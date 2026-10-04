@@ -4,14 +4,15 @@
 // Native has no <iframe>; this honest fallback is a Card with the location and a
 // Pressable that opens the OSM location via `Linking`. Metro picks this file on
 // iOS/Android; the `.web.tsx` sibling shows the real embed on web (the primary
-// verification surface). Generic Athens coords placeholder (D-9).
+// verification surface). The pin comes from `practice.coords`, same as the web
+// embed, so the two can never drift apart.
 // =============================================================================
 
 import { Linking, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, fonts, radii, space, type } from '../lib/theme';
+import { practice } from '../lib/site-content';
 
-const LAT = 37.9838;
-const LON = 23.7275;
+const { lat: LAT, lon: LON } = practice.coords;
 
 export interface PracticeMapProps {
   lat?: number;
@@ -29,10 +30,8 @@ export function PracticeMap({ lat = LAT, lon = LON, label, height = 320, style }
       <View style={styles.pin}>
         <Text style={styles.pinGlyph}>📍</Text>
       </View>
-      <Text style={styles.title}>{label ?? 'TailsUp'}</Text>
-      <Text style={styles.coords}>
-        {lat.toFixed(4)}, {lon.toFixed(4)}
-      </Text>
+      <Text style={styles.title}>{label ?? practice.name}</Text>
+      <Text style={styles.coords}>{practice.address.el}</Text>
       <Pressable
         accessibilityRole="button"
         onPress={() => void Linking.openURL(url)}

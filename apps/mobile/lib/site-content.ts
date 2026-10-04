@@ -35,6 +35,10 @@ export const practice = {
   // The hero eyebrow reads "<tagline> · <city>", so this is the region rather
   // than the village: Attica tells a visitor from Athens that this is near them.
   city: { el: 'Αττική', en: 'Attica' },
+  // Artemida, East Attica — from OSM Nominatim, not estimated. The practice has
+  // no street address on the site, so this is the town centre and the map frames
+  // the town rather than pretending to a doorway.
+  coords: { lat: 37.9742, lon: 24.0091 },
   // Reads as "Απαντάμε συνήθως <replyTime>." / "We usually reply <replyTime>."
   replyTime: { el: 'μέσα σε 1 ώρα', en: 'within the hour' },
 } as const;
