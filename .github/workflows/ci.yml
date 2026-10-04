@@ -1,0 +1,60 @@
+# TailsUp — CI gate.
+#
+# Runs on every push to main and every pull request. Three checks, matching what
+# is run locally before a release:
+#
+#   1. typecheck  — all three workspaces (api, mobile, shared) under strict mode
+#   2. test       — the apps/api vitest suite (DB is mocked; no Postgres needed)
+#   3. build:web  — the full Expo static export + post-export step
+#
+# Why build:web is in CI and not just typecheck+test: the web export is the
+# deployed artifact, and it has broken in ways the other two cannot catch — a
+# component returning null during the Node pre-render silently produces an empty
+# ~17 kB page, and post-export.mjs asserts that app-shell.html, 404.html and the
+# marketing pages all exist. Cheaper to fail here than to notice on the live site.
+#
+# NOT covered here (deliberately): anything needing a real database. The suite
+# mocks the DB client, so these checks pass without Postgres. The live-DB
+# walkthrough stays a manual step — see docs/deployment-plan.md.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch cancels the previous run — no point burning
+# minutes on a commit that has already been superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Honours .nvmrc (Node 20) so CI, the Cloudflare build and local dev
+          # all agree on the version.
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` (not `install`) — installs exactly the committed lockfile and
+      # fails if package.json and package-lock.json have drifted.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (api + mobile + shared)
+        run: npm run typecheck
+
+      - name: Test (apps/api)
+        run: npm test -w apps/api
+
+      - name: Build web export
+        run: npm run build:web
