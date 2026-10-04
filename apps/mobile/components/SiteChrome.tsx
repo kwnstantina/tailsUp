@@ -30,7 +30,7 @@
 // focus / press are tracked by hand instead.
 // =============================================================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, usePathname } from 'expo-router';
 import {
   Platform,
@@ -85,10 +85,20 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
   // Header is sticky (web); the page content + footer scroll beneath it. Each
   // page renders its own <Section>s as the Slot content; the footer always sits
   // at the bottom of the scroll (pushed down by marginTop:'auto' on short pages).
+  //
+  // This ScrollView lives in the layout, so it survives route changes — without
+  // the reset below, a new page opens at the previous page's scroll offset.
+  const scrollRef = useRef<ScrollView>(null);
+  const pathname = usePathname();
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [pathname]);
+
   return (
     <View style={styles.root}>
       <Header />
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
