@@ -142,6 +142,38 @@ not-found). Fixed in `fca353f` by targeting `/app-shell`.
 `html_handling`. Only a real deploy could surface it. Worth remembering before
 trusting any future local check of hosting behaviour.
 
+### Resolved 2026-10-04 — stray "Hello world" Worker script
+
+For a period the apex returned `200 "Hello world"` (plain text, 11 bytes) for every
+unmatched path, bypassing 404.html entirely — so every unknown URL advertised itself to
+search engines as a valid page.
+
+Cause: a Worker SCRIPT had been deployed from the dashboard ("Edit code" / Quick Edit).
+A Worker is `[static assets] + [optional script]`; this repo builds assets only
+(`wrangler.jsonc` has no `main`), but once a script exists Cloudflare routes unmatched
+requests to it instead of to `not_found_handling`. Correcting the build settings does
+NOT clear it — settings only affect the next build, and the old version keeps serving.
+
+Fix: Deployments -> **Create deployment** from `main`. Re-verified after:
+`/nonsense` -> 404 / 26,870 bytes, `/(site)/about` -> 404, all 10 real routes unchanged.
+
+**Do not use the dashboard "Edit code" button on this Worker** — it deploys a
+dashboard-authored version that overwrites what the Git pipeline builds.
+
+### Custom domain — LIVE 2026-10-04
+
+`https://tailsupacademy.gr` serves the site: DNS on Cloudflare, valid TLS
+(`ssl_verify_result: 0`), `http://` -> `https://`, all pages and dynamic routes verified.
+
+- [ ] **`www.tailsupacademy.gr` returns 404** with no `Location` header, so no redirect
+      rule is firing. The `*.tailsupacademy.gr` wildcard in the Worker's Domains tab does
+      NOT cover it — that entry is for preview deployments. Either add `www` as its own
+      Custom Domain (then it must also go in `ALLOWED_ORIGINS`), or add a zone-level
+      Redirect Rule to the apex (preferred: one canonical hostname, no duplicate content).
+- [ ] A redundant **Route** entry for `tailsupacademy.gr` sits alongside the Custom Domain
+      in the Worker's Domains tab. The Custom Domain is what serves; the Route is noise
+      and worth removing once `www` is settled.
+
 ### Known limitation of this deploy
 
 `EXPO_PUBLIC_API_URL` points at `https://api-staging.tailsupacademy.gr`, which
@@ -260,9 +292,13 @@ It reads no environment variables for those accounts — the `SEED_TRAINER_EMAIL
 - [ ] Set `PRACTICE_TRAINER_ID` to that trainer's id, or the public `POST /leads` and
       `POST /bookings` endpoints return `503 { "error": "practice not configured" }`
 
-### W8. CI — *do now, cheap, protects ongoing development*
-- [ ] No workflow runs `typecheck` or the 226 tests on push; only `db-backup.yml` exists.
-      ~20 lines
+### W8. CI — DONE 2026-10-04 ✅
+- [x] `.github/workflows/ci.yml` — typecheck (3 workspaces) + 226 api tests +
+      `build:web` on every push to main and every PR. Green on first run (7f2ab79).
+      Uses `node-version-file: .nvmrc` and `npm ci` so a drifted lockfile fails loudly.
+- [ ] **`db-backup.yml` is failing on every scheduled run** — no database, no secrets.
+      Harmless but it emails on each failure. Either set the W6 secrets or comment out
+      the `schedule:` trigger (leaving `workflow_dispatch`) until the DB exists.
 
 ### W9. Rate limiting — *accept or upgrade*
 `apps/api/src/app.ts` uses an in-memory limiter (10 req/min/IP) on `POST /leads` and
