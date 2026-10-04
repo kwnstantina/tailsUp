@@ -17,7 +17,6 @@ import Head from 'expo-router/head';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  Bullet,
   Card,
   Col,
   Eyebrow,
@@ -39,6 +38,7 @@ import {
 } from '../../components/ui';
 import { colors, fontFallback, fonts, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { photos } from '../../lib/photos';
 
 const PROMISE_ICONS = [IconCheck, IconPair, IconRising];
 const PROMISE_TINTS: Tint[] = ['mint', 'peach', 'coral'];
@@ -53,7 +53,7 @@ const copy = {
     title: { line1: 'Μια πρακτική χτισμένη', mark: 'στην εμπιστοσύνη', line2: '— όχι στα κόλπα.' },
     lead:
       'Η TailsUp ξεκίνησε από κάτι απλό: η εκπαίδευση πετυχαίνει όταν είναι ήρεμη, συνεπής και βασισμένη σε όσα πραγματικά συμβαίνουν. Όχι σε υποσχέσεις, και σίγουρα όχι στον φόβο.',
-    photoAlt: '[ΦΩΤΟ — μια συνεδρία σε εξέλιξη]',
+    photoAlt: 'Ο Άτερ στο πίσω κάθισμα του αυτοκινήτου μετά από συνεδρία, με ανοιχτό στόμα και χαλαρή στάση.',
     promisesEyebrow: 'Πώς δουλεύουμε',
     promisesTitle: 'Τρία πράγματα που μπορείτε να περιμένετε',
     promises: [
@@ -73,18 +73,10 @@ const copy = {
           'Καταγράφουμε κάθε συνεδρία, ώστε οι αποφάσεις μας να βασίζονται σε δεδομένα και η πρόοδος να είναι ορατή — και στις καλές και στις κακές εβδομάδες.',
       },
     ],
-    trainerEyebrow: 'Ο εκπαιδευτής',
-    trainerPhotoAlt: '[φωτογραφία εκπαιδευτή]',
-    trainerName: '[Όνομα Εκπαιδευτή]',
-    trainerRole: 'Ιδρυτής & επικεφαλής εκπαιδευτής',
-    trainerBio:
-      '[Σύντομο βιογραφικό]: πάνω από [Χ] χρόνια δουλειάς με σκύλους και τους ανθρώπους τους, με ειδίκευση στην αντιδραστικότητα και στη συνεργασία ιδιοκτήτη–σκύλου. Η αγαπημένη περίπτωση είναι πάντα αυτή που όλοι οι άλλοι είχαν παρατήσει.',
-    credsTitle: 'Προσόντα & πιστοποιήσεις',
-    creds: [
-      '[Πιστοποίηση εκπαίδευσης συμπεριφοράς]',
-      '[Μέλος επαγγελματικού συλλόγου]',
-      '[Συνεχιζόμενη εκπαίδευση / σεμινάρια]',
-    ],
+    trainerEyebrow: 'Η εκπαιδεύτρια',
+    trainerPhotoAlt: 'Η Δήμητρα Πίτση, χαμογελαστή, σε ένα πάρκο.',
+    trainerName: 'Δήμητρα Πίτση',
+    trainerRole: 'Ιδρύτρια & επικεφαλής εκπαιδεύτρια · 2 χρόνια εμπειρίας',
     proofTitle: 'Η φιλοσοφία μας, σε μία γραμμή.',
     proofBody:
       'Απόδειξη αντί για υποσχέσεις, ηρεμία αντί για πίεση — και ένας σκύλος που θέλει να συνεργαστεί, όχι που φοβάται να μην το κάνει.',
@@ -99,7 +91,7 @@ const copy = {
     title: { line1: 'A practice built on', mark: 'trust', line2: '— not tricks.' },
     lead:
       'TailsUp started from something simple: training works when it is calm, consistent and grounded in what is actually happening. Not in promises, and definitely not in fear.',
-    photoAlt: '[PHOTO — a session in progress]',
+    photoAlt: 'Ater in the back of the car after a session, mouth open and visibly relaxed.',
     promisesEyebrow: 'How we work',
     promisesTitle: 'Three things you can count on',
     promises: [
@@ -120,17 +112,9 @@ const copy = {
       },
     ],
     trainerEyebrow: 'The trainer',
-    trainerPhotoAlt: '[trainer photo]',
-    trainerName: '[Trainer Name]',
-    trainerRole: 'Founder & lead trainer',
-    trainerBio:
-      '[Short bio]: over [X] years working with dogs and their people, specialising in reactivity and owner–dog teamwork. The favourite case is always the one everybody else had given up on.',
-    credsTitle: 'Credentials & certifications',
-    creds: [
-      '[Behaviour-training certification]',
-      '[Professional association membership]',
-      '[Continuing education / seminars]',
-    ],
+    trainerPhotoAlt: 'Dimitra Pitsi, smiling, in a park.',
+    trainerName: 'Dimitra Pitsi',
+    trainerRole: 'Founder & lead trainer · 2 years’ experience',
     proofTitle: 'Our philosophy, in one line.',
     proofBody:
       'Proof instead of promises, calm instead of pressure — and a dog who wants to work with you, not one who is afraid not to.',
@@ -175,7 +159,12 @@ export default function AboutPage() {
             </Stack>
           </Col>
           <Col weight={1}>
-            <PhotoPlaceholder label={c.photoAlt} height={isWide ? 360 : 240} tint="mint" />
+            <PhotoPlaceholder
+              label={c.photoAlt}
+              height={isWide ? 360 : 240}
+              tint="mint"
+              source={photos.aboutSession}
+            />
           </Col>
         </Grid>
       </Section>
@@ -211,39 +200,33 @@ export default function AboutPage() {
         </Stack>
       </Section>
 
-      {/* ── The trainer + credentials ───────────────────────────────────── */}
+      {/* ── The trainer ─────────────────────────────────────────────────── */}
       <Section spacing="normal">
         <Stack gap={space.lg}>
           <Eyebrow>{c.trainerEyebrow}</Eyebrow>
 
-          <Card tint="white" large>
-            <Grid gap={space.lg} align="flex-start">
+          {/* Capped and centre-aligned: this card carries a portrait and two
+              lines, so left at full page width it reads as a half-empty row
+              rather than an introduction. */}
+          <Card tint="white" large style={styles.trainerCard}>
+            <Grid gap={space.lg} align="center">
               <Col width={200}>
                 <PhotoPlaceholder
                   label={c.trainerPhotoAlt}
                   height={isWide ? 200 : 180}
                   tint="peach"
                   kind="portrait"
+                  source={photos.trainerPortrait}
                 />
               </Col>
               <Col weight={1}>
                 <Stack gap={space.xs}>
                   <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.trainerName}</Text>
                   <Text style={[ty.body, fontFallback.body, styles.role]}>{c.trainerRole}</Text>
-                  <Text style={[ty.bodyLg, fontFallback.body, styles.ink]}>{c.trainerBio}</Text>
                 </Stack>
               </Col>
             </Grid>
           </Card>
-
-          {/* The quiet corner of the page — a certification does not need a
-              sticker, so this is a plain ticked list on the page background. */}
-          <Stack gap={space.sm} style={styles.creds}>
-            <Text style={[ty.h3, fontFallback.display, styles.ink]}>{c.credsTitle}</Text>
-            {c.creds.map((cr) => (
-              <Bullet key={cr}>{cr}</Bullet>
-            ))}
-          </Stack>
         </Stack>
       </Section>
 
@@ -271,6 +254,7 @@ const styles = StyleSheet.create({
   onDarkMuted: { color: colors.onDarkMuted, maxWidth: 620 },
 
   headline: { gap: 2 },
+  trainerCard: { maxWidth: 560 },
   lead: { color: colors.textMuted, maxWidth: 560 },
 
   promiseCard: { flex: 1, gap: space.sm },
@@ -280,7 +264,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyBold,
     marginBottom: 2,
   },
-  creds: { maxWidth: 640 },
 
   proofCta: { marginTop: space.xs, alignItems: 'flex-start', alignSelf: 'stretch' },
 });

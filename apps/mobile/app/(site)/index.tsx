@@ -47,6 +47,7 @@ import { ProgressCurve } from '../../components/ProgressCurve';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
 import { crew, practice, sampleCurve, services, trustClaims } from '../../lib/site-content';
+import { photos } from '../../lib/photos';
 
 // Card order matches `services` — the first three only; the intensive programme
 // lives on /services rather than competing for room in a three-up row.
@@ -66,7 +67,7 @@ const copy = {
       'Γαβγίσματα, τραβήγματα στο λουρί, μια Τρίτη πρωί που ξέφυγε; Θα το λύσουμε μαζί — στον ρυθμό του σκύλου σας, με πολύ λιγότερο άγχος απ’ όσο περιμένετε.',
     ctaPrimary: 'Κλείσε την πρώτη γνωριμία',
     ctaSecondary: 'Δες τι κάνουμε',
-    photoAlt: '[ΦΩΤΟ — ένας πολύ ευχαριστημένος σκύλος στη βόλτα]',
+    photoAlt: 'Ο Άτερ ξαπλωμένος ήρεμα στο χορτάρι στη διάρκεια της βόλτας, με το λουρί χαλαρό δίπλα του.',
     crewEyebrow: 'Η παρέα',
     crewTitle: 'Σκύλοι που έχουμε γνωρίσει',
     servicesEyebrow: 'Τι κάνουμε',
@@ -82,10 +83,10 @@ const copy = {
     proofBody2:
       'Μετά από λίγες εβδομάδες γίνεται αυτό εδώ. Χρήσιμο τις μέρες που νομίζετε ότι δεν αλλάζει τίποτα.',
     proofCta: 'Δείξε μου ένα αληθινό',
-    curveTitle: 'Οι δώδεκα εβδομάδες του [ΟΝΟΜΑ]',
+    curveTitle: 'Δώδεκα εβδομάδες, μία καμπύλη',
     curveRange: '2 μ → 14 μ',
     curveCaption:
-      'Πόσο κοντά μπορούσε να έρθει άλλος σκύλος πριν αντιδράσει ο [ΟΝΟΜΑ]. Ενδεικτικά δεδομένα.',
+      'Πόσο κοντά μπορούσε να έρθει άλλος σκύλος πριν αντιδράσει. Παράδειγμα της μορφής — όχι δεδομένα πραγματικού σκύλου.',
     closingTitle: 'Λοιπόν, πείτε μας για τον σκύλο σας.',
     closingBody:
       'Δυο-τρεις προτάσεις αρκούν. Ό,τι κι αν κάνει, μάλλον το έχουμε ξανασυναντήσει — και σίγουρα δεν θα μας σοκάρει.',
@@ -104,7 +105,7 @@ const copy = {
       'Barking, lunging, pulling on the lead, or just a bit much on a Tuesday morning? We’ll work it out together — at your dog’s pace, with far less stress than you’re expecting.',
     ctaPrimary: 'Book a first hello',
     ctaSecondary: 'See what we do',
-    photoAlt: '[PHOTO — a very pleased dog, mid-walk]',
+    photoAlt: 'Ater lying calmly in the grass mid-walk, his lead slack beside him.',
     crewEyebrow: 'Some of the crew',
     crewTitle: 'Dogs we’ve worked with',
     servicesEyebrow: 'What we do',
@@ -120,10 +121,10 @@ const copy = {
     proofBody2:
       'A few weeks in, it turns into this. Handy on the days it feels like nothing is changing.',
     proofCta: 'Show me a real one',
-    curveTitle: '[DOG NAME]’s twelve weeks',
+    curveTitle: 'Twelve weeks, one curve',
     curveRange: '2 m → 14 m',
     curveCaption:
-      'How close another dog could get before [DOG NAME] reacted. Sample data.',
+      'How close another dog could get before the dog reacted. An example of the shape — not one real dog’s data.',
     closingTitle: 'So, tell us about your dog.',
     closingBody:
       'A few sentences is plenty. Whatever they’re doing, we’ve almost certainly met it before — and nothing you write is going to shock us.',
@@ -206,9 +207,10 @@ export default function HomePage() {
               <View style={[styles.blobCoral, { display: isWide ? 'flex' : 'none' }]} />
               <PhotoPlaceholder
                 label={c.photoAlt}
-                height={isWide ? 440 : 260}
+                height={isWide ? 440 : 300}
                 tint="peach"
                 style={isWide ? styles.photoInset : undefined}
+                source={photos.heroDog}
               />
             </View>
           </Col>
@@ -247,7 +249,12 @@ export default function HomePage() {
           <Grid gap={isWide ? 20 : space.md}>
             {crew[lang].map((member) => (
               <Col key={member.name}>
-                <CirclePhoto name={member.name} caption={member.workedOn} tint={member.tint} />
+                <CirclePhoto
+                  name={member.name}
+                  caption={member.workedOn}
+                  tint={member.tint}
+                  source={photos[member.photo]}
+                />
               </Col>
             ))}
           </Grid>

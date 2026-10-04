@@ -11,23 +11,32 @@
 // written, not translated — "Happy dogs, happier walks" has no literal Greek,
 // so the EL hero carries the same energy with its own line.
 //
-// Everything in square brackets is a CLEARLY-MARKED PLACEHOLDER awaiting the
-// real value, per the user decision — no invented addresses, prices or names.
+// Every value here is REAL and supplied by the practice — nothing is invented.
+//
+// Prices are a FROM figure, not a rate card: the practice quotes per case after
+// the first hello, so a single number per service would be a promise it has not
+// made. One shared value today, but kept per-service so they can diverge
+// without a layout change.
 // =============================================================================
 
 import type { Tint } from '../components/ui';
 import type { Lang } from './i18n';
+import type { PhotoSlot } from './photos';
 
 // ── The practice ─────────────────────────────────────────────────────────────
 
 export const practice = {
   name: 'TailsUp',
-  address: { el: '[διεύθυνση], Αθήνα', en: '[address], Athens' },
-  phone: '[τηλέφωνο]',
-  email: '[email]',
-  hours: { el: '[ώρες]', en: '[hours]' },
-  city: { el: 'Αθήνα', en: 'Athens' },
-  replyTime: { el: 'μέσα σε [Χ] ώρες', en: 'within [X] hours' },
+  address: { el: 'Αρτέμιδα Αττικής', en: 'Artemida, Attica' },
+  // Spaced for reading, not for dialling — `tel:` links build their own value.
+  phone: '+30 694 305 9915',
+  email: 'pitsidimitra@gmail.com',
+  hours: { el: '24 ώρες το 24ωρο', en: 'Around the clock' },
+  // The hero eyebrow reads "<tagline> · <city>", so this is the region rather
+  // than the village: Attica tells a visitor from Athens that this is near them.
+  city: { el: 'Αττική', en: 'Attica' },
+  // Reads as "Απαντάμε συνήθως <replyTime>." / "We usually reply <replyTime>."
+  replyTime: { el: 'μέσα σε 1 ώρα', en: 'within the hour' },
 } as const;
 
 // ── Trust claims — the sticker run under the hero ────────────────────────────
@@ -88,7 +97,7 @@ export const services: Record<Lang, Service[]> = {
         'Ένα πλάνο τριών βημάτων, γραπτώς',
         'Μια ειλικρινής εκτίμηση για το πόσο θα πάρει',
       ],
-      price: '[τιμή]',
+      price: 'από 20€',
       tint: 'mint',
     },
     {
@@ -103,7 +112,7 @@ export const services: Record<Lang, Service[]> = {
         'Μετρήσιμη αλλαγή στην απόσταση ανοχής',
         'Ένα σχέδιο για τις κακές μέρες',
       ],
-      price: '[τιμή]',
+      price: 'από 20€',
       tint: 'peach',
     },
     {
@@ -118,7 +127,7 @@ export const services: Record<Lang, Service[]> = {
         'Κοινωνικοποίηση χωρίς υπερδιέγερση',
         'Παρέα από ιδιοκτήτες που τα ίδια περνάνε',
       ],
-      price: '[τιμή]',
+      price: 'από 20€',
       tint: 'coral',
     },
     {
@@ -133,7 +142,7 @@ export const services: Record<Lang, Service[]> = {
         'Επικοινωνία ανάμεσα στις συνεδρίες',
         'Πλήρες ιστορικό προόδου με δεδομένα',
       ],
-      price: '[τιμή]',
+      price: 'από 20€',
       tint: 'mint',
     },
   ],
@@ -150,7 +159,7 @@ export const services: Record<Lang, Service[]> = {
         'A three-step plan, in writing',
         'An honest estimate of how long it takes',
       ],
-      price: '[price]',
+      price: 'from €20',
       tint: 'mint',
     },
     {
@@ -165,7 +174,7 @@ export const services: Record<Lang, Service[]> = {
         'A measurable change in tolerance distance',
         'A plan for the bad days',
       ],
-      price: '[price]',
+      price: 'from €20',
       tint: 'peach',
     },
     {
@@ -180,7 +189,7 @@ export const services: Record<Lang, Service[]> = {
         'Socialising without the over-arousal',
         'Company from owners going through the same',
       ],
-      price: '[price]',
+      price: 'from €20',
       tint: 'coral',
     },
     {
@@ -195,34 +204,34 @@ export const services: Record<Lang, Service[]> = {
         'Contact between sessions',
         'A full progress history, in data',
       ],
-      price: '[price]',
+      price: 'from €20',
       tint: 'mint',
     },
   ],
 };
 
 // ── The crew strip — dogs we have worked with ────────────────────────────────
-// Placeholder names and photos. The shape is what a real entry will carry, so
-// dropping real ones in changes this array and nothing else.
+// REAL dogs, REAL photographs and the REAL behaviour each was worked on, all
+// supplied by the practice. The same three carry the case studies on /results.
 
 export interface CrewMember {
   name: string;
   workedOn: string;
   tint: Tint;
+  /** Which entry in `lib/photos.ts` fills this circle. */
+  photo: PhotoSlot;
 }
 
 export const crew: Record<Lang, CrewMember[]> = {
   el: [
-    { name: '[Λούνα]', workedOn: 'Αντιδραστικότητα στη βόλτα', tint: 'mint' },
-    { name: '[Ρόκι]', workedOn: 'Θόρυβοι και οχήματα', tint: 'peach' },
-    { name: '[Μπέλα]', workedOn: 'Αυτοσυγκράτηση σε ομάδα', tint: 'coral' },
-    { name: '[Μίλο]', workedOn: 'Άγχος αποχωρισμού', tint: 'highlight' },
+    { name: 'Άτερ', workedOn: 'Φοβικότητα στη βόλτα', tint: 'mint', photo: 'crewAter' },
+    { name: 'Άλμπα', workedOn: 'Άγχος αποχωρισμού', tint: 'peach', photo: 'crewAlba' },
+    { name: 'Νέρο', workedOn: 'Αντιδραστικότητα στη βόλτα', tint: 'coral', photo: 'crewNero' },
   ],
   en: [
-    { name: '[Luna]', workedOn: 'Reactivity on the walk', tint: 'mint' },
-    { name: '[Rocky]', workedOn: 'Noises and vehicles', tint: 'peach' },
-    { name: '[Bella]', workedOn: 'Self-control in a group', tint: 'coral' },
-    { name: '[Milo]', workedOn: 'Separation anxiety', tint: 'highlight' },
+    { name: 'Ater', workedOn: 'Fear on the walk', tint: 'mint', photo: 'crewAter' },
+    { name: 'Alba', workedOn: 'Separation anxiety', tint: 'peach', photo: 'crewAlba' },
+    { name: 'Nero', workedOn: 'Reactivity on the walk', tint: 'coral', photo: 'crewNero' },
   ],
 };
 

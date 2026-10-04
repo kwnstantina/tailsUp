@@ -1,16 +1,19 @@
 // =============================================================================
 // (site)/results.tsx — Results / Αποτελέσματα  (route: /results)
 //
-// Representative case studies, each a short before→after narrative next to its
-// outcome curve. Rendered from an in-code array, clearly structured so real
-// case studies replace it with no layout change.
+// Three REAL case studies supplied by the practice — the same three dogs as the
+// home page's crew strip — each a short before→after narrative beside the dog's
+// own photograph.
 //
-// NO fabricated testimonials presented as real: names are bracketed, the data
-// is labelled illustrative, and the disclaimer sits in the intro rather than in
-// small print at the bottom. That honesty IS the page's pitch.
+// THERE IS NO PROGRESS CURVE ON THIS PAGE. There was, drawn from invented
+// per-session threshold readings, and it had to go the moment the names and
+// outcomes became real: a true story next to a fabricated chart is worse than
+// either alone. The chip carries the one number the practice did measure — how
+// long it took. When session data exists for a real dog, the curve earns its
+// place back.
 //
-// The playful direction gives each case its own tint and puts the before/after
-// pair on chips, so the jump reads at a glance instead of needing to be read.
+// Each case keeps its own tint, and the before/after pair stays on labelled
+// lines so the change reads at a glance.
 // =============================================================================
 
 import Head from 'expo-router/head';
@@ -23,6 +26,7 @@ import {
   Grid,
   HeadlineRow,
   Highlight,
+  PhotoPlaceholder,
   PrimaryButton,
   Section,
   Stack,
@@ -30,11 +34,9 @@ import {
   Wave,
   tintAt,
 } from '../../components/ui';
-import { ProgressCurve } from '../../components/ProgressCurve';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
-
-type CurvePoint = { occurredAt: string; thresholdMeters: number };
+import { photos, type PhotoSlot } from '../../lib/photos';
 
 interface CaseStudy {
   dogName: string;
@@ -42,109 +44,79 @@ interface CaseStudy {
   summary: string;
   before: string;
   after: string;
-  /** The headline jump, short enough for a chip. */
-  jump: string;
-  curveData: CurvePoint[];
+  /** How long it took, short enough for a chip. */
+  duration: string;
+  /** The dog's photograph, from `lib/photos.ts`. */
+  photo: PhotoSlot;
 }
 
-// Representative outcome arcs (placeholder data). thresholdMeters rises = the dog
-// stays calm closer to its trigger over the weeks. Same shape as the live data a
-// real case study would carry, so swapping in real numbers needs no layout change.
+// The practice's own three cases. Ordered as on the home page so a visitor who
+// met these dogs in the crew strip meets them again in the same sequence.
 const CASES: { el: CaseStudy[]; en: CaseStudy[] } = {
   el: [
     {
-      dogName: '[Λούνα]',
-      breed: '[Border Collie, 2 ετών]',
+      dogName: 'Άτερ',
+      breed: 'Ημίαιμο ποιμενικό, 2,5 ετών',
       summary:
-        'Κάθε σκύλος στη βόλτα ήταν κρίση. Η Λούνα δεν ήταν «κακή» — ήταν πάνω από το όριό της πριν καν βγει από την πόρτα.',
-      before: 'Άντεχε άλλον σκύλο μόνο στα 2 μέτρα.',
-      after: 'Μετά από [12] εβδομάδες: ήρεμα προσπεράσματα στα 15 μέτρα.',
-      jump: '2 μ → 15 μ',
-      curveData: [
-        { occurredAt: '2026-01-10', thresholdMeters: 2 },
-        { occurredAt: '2026-01-31', thresholdMeters: 3 },
-        { occurredAt: '2026-02-21', thresholdMeters: 6 },
-        { occurredAt: '2026-03-14', thresholdMeters: 10 },
-        { occurredAt: '2026-04-04', thresholdMeters: 15 },
-      ],
+        'Δεν έβγαινε βόλτα και δεν δεχόταν ανθρώπους. Δεν ήταν άρνηση — ήταν ένας σκύλος που δεν ένιωθε ασφαλής πουθενά έξω από το σπίτι του.',
+      before: 'Δεν έβγαινε βόλτα· απέφευγε κάθε επαφή με αγνώστους.',
+      after:
+        'Λειτουργικός στη βόλτα, εξοικειωμένος με ανθρώπους, ζώα και τα ερεθίσματα της γειτονιάς του.',
+      duration: '1 χρόνος',
+      photo: 'crewAter',
     },
     {
-      dogName: '[Ρόκι]',
-      breed: '[Ημίαιμος, 4 ετών]',
+      dogName: 'Άλμπα',
+      breed: 'Λαμπραντόρ, 5 ετών',
       summary:
-        'Κάθε μηχανάκι τον έστελνε στο τέλος του λουριού. Ξεκινήσαμε σε έναν ήσυχο δρόμο και δουλέψαμε προς τα έξω.',
-      before: 'Αντιδρούσε σε κάθε όχημα κάτω από 4 μέτρα.',
-      after: 'Μετά από [10] εβδομάδες: σταθερή εστίαση στον ιδιοκτήτη στα 12 μέτρα.',
-      jump: '4 μ → 12 μ',
-      curveData: [
-        { occurredAt: '2026-02-02', thresholdMeters: 4 },
-        { occurredAt: '2026-02-23', thresholdMeters: 5 },
-        { occurredAt: '2026-03-16', thresholdMeters: 8 },
-        { occurredAt: '2026-04-06', thresholdMeters: 12 },
-      ],
+        'Το άγχος αποχωρισμού έβγαινε σε ζημιές κάθε φορά που έμενε μόνη. Χτίσαμε την ανοχή της στον χρόνο μοναξιάς σταδιακά, ξεκινώντας από πολύ μικρά διαστήματα.',
+      before: 'Δεν άντεχε να μείνει μόνη· ζημιές σε κάθε απουσία.',
+      after: 'Μένει σπίτι ήρεμη, χωρίς ζημιές.',
+      duration: '5 μήνες',
+      photo: 'crewAlba',
     },
     {
-      dogName: '[Μπέλα]',
-      breed: '[Λαμπραντόρ, 1 έτους]',
+      dogName: 'Νέρο',
+      breed: 'Λαμπραντόρ, 9 ετών',
       summary:
-        'Τέλεια στο σαλόνι, χαμένη στην ομάδα. Το ζητούμενο δεν ήταν η εντολή — ήταν η εντολή με παρέα γύρω.',
-      before: 'Ανταποκρινόταν μόνο σε ήσυχο χώρο.',
-      after: 'Μετά από [8] εβδομάδες: σταθερή ανταπόκριση μέσα στο ομαδικό μάθημα.',
-      jump: '3 μ → 10 μ',
-      curveData: [
-        { occurredAt: '2026-03-01', thresholdMeters: 3 },
-        { occurredAt: '2026-03-15', thresholdMeters: 5 },
-        { occurredAt: '2026-03-29', thresholdMeters: 7 },
-        { occurredAt: '2026-04-12', thresholdMeters: 10 },
-      ],
+        'Αντιδρούσε σε κάθε σκύλο που συναντούσε στη βόλτα. Δουλέψαμε πάντα κάτω από το όριο άγχους του, με απόσταση που μίκραινε μόνο όταν ήταν έτοιμος.',
+      before: 'Αντιδρούσε σε κάθε σκύλο στη διαδρομή.',
+      after: 'Περνάει δίπλα από άλλους σκύλους χωρίς να αντιδρά.',
+      duration: '6 μήνες',
+      photo: 'crewNero',
     },
   ],
   en: [
     {
-      dogName: '[Luna]',
-      breed: '[Border Collie, 2 yrs]',
+      dogName: 'Ater',
+      breed: 'Shepherd mix, 2.5 years',
       summary:
-        'Every dog on the walk was a crisis. Luna was not "bad" — she was over her threshold before she got out of the door.',
-      before: 'Could tolerate another dog only at 2 metres.',
-      after: 'After [12] weeks: calm passes at 15 metres.',
-      jump: '2 m → 15 m',
-      curveData: [
-        { occurredAt: '2026-01-10', thresholdMeters: 2 },
-        { occurredAt: '2026-01-31', thresholdMeters: 3 },
-        { occurredAt: '2026-02-21', thresholdMeters: 6 },
-        { occurredAt: '2026-03-14', thresholdMeters: 10 },
-        { occurredAt: '2026-04-04', thresholdMeters: 15 },
-      ],
+        'He would not go out for a walk and would not accept people. It was not refusal — it was a dog who felt safe nowhere outside his own home.',
+      before: 'Would not go out for a walk; avoided all contact with strangers.',
+      after:
+        'Works on the walk, and is at ease with people, other animals and the everyday goings-on of his neighbourhood.',
+      duration: '1 year',
+      photo: 'crewAter',
     },
     {
-      dogName: '[Rocky]',
-      breed: '[Mixed breed, 4 yrs]',
+      dogName: 'Alba',
+      breed: 'Labrador, 5 years',
       summary:
-        'Every scooter sent him to the end of the lead. We started on a quiet street and worked outwards.',
-      before: 'Reacted to every vehicle under 4 metres.',
-      after: 'After [10] weeks: steady focus on his owner at 12 metres.',
-      jump: '4 m → 12 m',
-      curveData: [
-        { occurredAt: '2026-02-02', thresholdMeters: 4 },
-        { occurredAt: '2026-02-23', thresholdMeters: 5 },
-        { occurredAt: '2026-03-16', thresholdMeters: 8 },
-        { occurredAt: '2026-04-06', thresholdMeters: 12 },
-      ],
+        'Separation anxiety came out as damage every time she was left alone. We built her tolerance for time on her own gradually, starting from very short stretches.',
+      before: 'Could not be left alone; damage on every absence.',
+      after: 'Stays home calmly, with nothing destroyed.',
+      duration: '5 months',
+      photo: 'crewAlba',
     },
     {
-      dogName: '[Bella]',
-      breed: '[Labrador, 1 yr]',
+      dogName: 'Nero',
+      breed: 'Labrador, 9 years',
       summary:
-        'Perfect in the living room, lost in a group. The job was never the cue — it was the cue with company around.',
-      before: 'Responded only in a quiet space.',
-      after: 'After [8] weeks: steady responses inside the group class.',
-      jump: '3 m → 10 m',
-      curveData: [
-        { occurredAt: '2026-03-01', thresholdMeters: 3 },
-        { occurredAt: '2026-03-15', thresholdMeters: 5 },
-        { occurredAt: '2026-03-29', thresholdMeters: 7 },
-        { occurredAt: '2026-04-12', thresholdMeters: 10 },
-      ],
+        'He reacted to every dog he met on the walk. We worked below his stress threshold throughout, closing the distance only when he was ready for it.',
+      before: 'Reacted to every dog on the route.',
+      after: 'Passes other dogs without reacting.',
+      duration: '6 months',
+      photo: 'crewNero',
     },
   ],
 };
@@ -153,37 +125,35 @@ const copy = {
   el: {
     head: {
       title: 'Αποτελέσματα — TailsUp',
-      desc: 'Ενδεικτικές περιπτώσεις: πώς μοιάζει η πρόοδος όταν την καταγράφεις εβδομάδα με εβδομάδα.',
+      desc: 'Τρία πραγματικά περιστατικά: τι συνέβαινε, τι άλλαξε και σε πόσο καιρό.',
     },
     eyebrow: 'Αποτελέσματα',
-    title: { line1: 'Η πρόοδος, όταν', mark: 'τη μετράς', line2: 'στ’ αλήθεια.' },
+    title: { line1: 'Τι άλλαξε', mark: 'στ’ αλήθεια', line2: '— και σε πόσο καιρό.' },
     lead:
-      'Να πώς μοιάζουν οι πρώτοι τρεις μήνες. Η καμπύλη δείχνει πόσο κοντά μπορούσε να έρθει το ερέθισμα πριν ο σκύλος χάσει την ψυχραιμία του — όσο ανεβαίνει, τόσο πιο εύκολη γίνεται η βόλτα.',
+      'Τρεις σκύλοι με τους οποίους δουλέψαμε. Για τον καθένα: από πού ξεκινήσαμε, πού φτάσαμε και πόσο χρειάστηκε.',
     disclaimer:
-      'Τα ονόματα και τα δεδομένα είναι ενδεικτικά παραδείγματα, όχι πραγματικοί πελάτες. Η μορφή τους είναι ακριβώς αυτή που θα δείτε για τον δικό σας σκύλο.',
+      'Πραγματικά περιστατικά από τη δουλειά μας. Κάθε σκύλος έχει τον δικό του ρυθμό — οι χρόνοι εδώ είναι αυτοί που χρειάστηκαν, όχι εγγύηση.',
     beforeLabel: 'Πριν',
     afterLabel: 'Μετά',
-    axisLabel: 'Όριο ανοχής (μέτρα) ανά συνεδρία',
-    ctaTitle: 'Θέλετε τη δική σας καμπύλη;',
-    ctaBody: 'Ξεκινά από την πρώτη γνωριμία — και από το πρώτο νούμερο που σημειώνουμε.',
+    ctaTitle: 'Θέλετε την ίδια διαδρομή;',
+    ctaBody: 'Ξεκινά από την πρώτη γνωριμία — εκεί καταγράφουμε το σημείο εκκίνησης του δικού σας σκύλου.',
     cta: 'Κλείσε την πρώτη γνωριμία',
   },
   en: {
     head: {
       title: 'Results — TailsUp',
-      desc: 'Representative cases: what progress looks like when you record it week by week.',
+      desc: 'Three real cases: what was happening, what changed, and how long it took.',
     },
     eyebrow: 'Results',
-    title: { line1: 'Progress, when you', mark: 'actually', line2: 'measure it.' },
+    title: { line1: 'What actually', mark: 'changed', line2: '— and how long it took.' },
     lead:
-      'Here is what the first three months look like. The curve shows how close the trigger could get before the dog lost their composure — the higher it climbs, the easier the walk gets.',
+      'Three dogs we have worked with. For each one: where we started, where we got to, and how long it took.',
     disclaimer:
-      'Names and data are illustrative examples, not real clients. The shape is exactly what you will see for your own dog.',
+      'Real cases from our own work. Every dog moves at their own pace — the timings here are what those dogs needed, not a guarantee.',
     beforeLabel: 'Before',
     afterLabel: 'After',
-    axisLabel: 'Tolerance threshold (metres) per session',
-    ctaTitle: 'Want a curve of your own?',
-    ctaBody: 'It starts at the first hello — and at the first number we write down.',
+    ctaTitle: 'Want the same arc?',
+    ctaBody: 'It starts at the first hello — that is where we write down your dog’s starting point.',
     cta: 'Book a first hello',
   },
 } as const;
@@ -240,9 +210,9 @@ export default function ResultsPage() {
                     <Stack gap={space.xs}>
                       <View style={styles.nameRow}>
                         <Text style={[ty.h3, fontFallback.display, styles.ink]}>{cs.dogName}</Text>
-                        <View style={styles.jumpChip}>
-                          <Text style={[ty.body, fontFallback.body, styles.jumpText]}>
-                            {cs.jump}
+                        <View style={styles.durationChip}>
+                          <Text style={[ty.body, fontFallback.body, styles.durationText]}>
+                            {cs.duration}
                           </Text>
                         </View>
                       </View>
@@ -259,12 +229,12 @@ export default function ResultsPage() {
                   </Col>
 
                   <Col weight={1}>
-                    <Stack gap={space.xs}>
-                      <ProgressCurve data={cs.curveData} height={isWide ? 200 : 170} />
-                      <Text style={[ty.body, fontFallback.body, { color: t.ink }, styles.axis]}>
-                        {c.axisLabel}
-                      </Text>
-                    </Stack>
+                    <PhotoPlaceholder
+                      label={`${cs.dogName} — ${cs.breed}`}
+                      height={isWide ? 280 : 220}
+                      tint={tint}
+                      source={photos[cs.photo]}
+                    />
                   </Col>
                 </Grid>
               </Card>
@@ -333,13 +303,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: space.sm,
   },
-  jumpChip: {
+  durationChip: {
     backgroundColor: colors.surface,
     borderRadius: radii.pill,
     paddingVertical: 5,
     paddingHorizontal: 13,
   },
-  jumpText: {
+  durationText: {
     color: colors.accent,
     fontFamily: fonts.bodyBold,
     fontSize: 15,
@@ -364,7 +334,6 @@ const styles = StyleSheet.create({
     minWidth: 54,
   },
   baValue: { flex: 1, minWidth: 180 },
-  axis: { fontSize: 13, lineHeight: 19 },
 
   ctaEnd: { alignItems: 'flex-end' },
 });
