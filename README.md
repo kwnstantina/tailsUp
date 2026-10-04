@@ -4,17 +4,10 @@ TailsUp is a data-driven dog-training platform. A trainer records structured
 behavior data during sessions (a fast 4-tap log), clients track their dog's
 progress and homework, a public website captures leads and bookings, and cheap
 AI summaries report on progress — with the structured behavior data as the
-long-term proprietary dataset moat. **This repository has shipped Phases 1
-(Foundations), 2 (Trainer view), 3a (Public site + lead/booking capture), and
-3b-1 (App auth foundation — self-hosted BetterAuth, roles trainer|client):** an
-npm-workspaces monorepo with the
-full database schema, the Phase 1 endpoints (`GET /health`,
-`POST /sessions/:id/events`), the Phase 2 trainer-view read/media API, three
-trainer-facing Expo Router screens (4-tap quick-log, post-session detail with
-direct-to-R2 video upload, dog timeline), environment scaffolding, and an
-automated daily database backup. Phases 3–4 are not built yet (see
-[Phase boundary](#phase-boundary)). Phase 2 run/test instructions are in the
-[Phase 2 — Trainer view](#phase-2--trainer-view) section.
+long-term proprietary dataset moat. **This repository is Phase 1 (Foundations):**
+an npm-workspaces monorepo with the full database schema, two API endpoints, a
+mobile connectivity screen, environment scaffolding, and an automated daily
+database backup. Later phases are not built yet (see [Phase boundary](#phase-boundary)).
 
 ## Monorepo layout
 
@@ -139,11 +132,37 @@ Expected: HTTP 201 with the created `BehaviorEventDTO`. Behavior to expect:
 - `intervention` omitted **and** the dog has no protocol default → **400**
   (`intervention` is never null — it is the dataset moat).
 
-## Run the mobile app
+## Run the site / mobile app
 
-The Expo Router app proves app↔API connectivity by calling `GET /health`.
+`apps/mobile` is one Expo Router codebase serving **both** the public website
+(web) and the app (iOS/Android) — there is no separate Next.js project.
+
+Routes live in two groups. `app/(site)/` is the public, unauthenticated website;
+`app/(app)/` is behind a session. Group folders do not appear in the URL.
+
+| Route                    | Group    | What it is                                       |
+| ------------------------ | -------- | ------------------------------------------------ |
+| `/`                      | `(site)` | Home                                             |
+| `/about`                 | `(site)` | About the practice                               |
+| `/services`              | `(site)` | Session types + the tracking service             |
+| `/results`               | `(site)` | Threshold-over-time proof                        |
+| `/contact`               | `(site)` | Lead form → `POST /leads`                        |
+| `/booking`               | `(site)` | Booking request → `POST /bookings`               |
+| `/login`                 | —        | BetterAuth sign-in                               |
+| `/dogs`                  | `(app)`  | Trainer: dog list                                |
+| `/dogs/[id]/timeline`    | `(app)`  | Trainer: dog timeline                            |
+| `/sessions/[id]/log`     | `(app)`  | Trainer: 4-tap behaviour logging                 |
+| `/events/[id]`           | `(app)`  | Trainer: post-session event detail               |
+| `/manage/leads`          | `(app)`  | Trainer: lead management + convert                |
+| `/manage/bookings`       | `(app)`  | Trainer: booking approval                        |
+| `/client`                | `(app)`  | Client dashboard                                 |
+| `/health`                | `(app)`  | The `GET /health` connectivity screen (AC-9)     |
+
+The site is bilingual (Greek/English, Greek by default) via `lib/i18n.tsx`; all
+site copy lives there, not in the page components.
+
 Set the API base URL via `EXPO_PUBLIC_API_URL` (in `apps/mobile/.env`), then
-start the web target (sufficient for Phase 1 verification):
+start the web target:
 
 ```bash
 # apps/mobile/.env
@@ -157,8 +176,39 @@ npm run web -w apps/mobile         # Expo web build
 > the dev menu for iOS/Android/web). If `-w apps/mobile` does not resolve a
 > script in your environment, use the `cd apps/mobile && npm run <script>` form.
 
-With the API running, the screen shows a "Connected" state with the `/health`
-payload. Stop the API and reload to see the clear failure state.
+With the API running, `/debug/health` shows a "Connected" state with the
+`/health` payload. Stop the API and reload to see the clear failure state.
+
+### Before the forms will work
+
+Both public forms write to the database, so the API needs a practice trainer to
+attribute them to, and an origin allow-list:
+
+- **A `trainer` row must exist.** Public captures have no authenticated actor,
+  and `lead.trainerId` / `booking.trainerId` are NOT NULL, so
+  `lib/trainer.ts#resolveTrainerId` supplies one: the optional
+  **`PRACTICE_TRAINER_ID`** env var if set, otherwise the sole/oldest `trainer`
+  row. With neither, the endpoints return **503
+  `{ "error": "practice not configured" }`** rather than fabricating an id. Run
+  `npm run db:seed -w apps/api` first.
+- **`ALLOWED_ORIGINS`** — must include the origin the site is served from. The
+  default covers Expo web in dev (`http://localhost:8081`); add your deployed
+  site origin before going live. It is never `*` — auth uses cookies, and a
+  credentialed CORS response may not use a wildcard.
+
+### Building the site for deployment
+
+```bash
+cd apps/mobile && npx expo export -p web    # static site into apps/mobile/dist
+```
+
+`app.json` sets `web.output: "static"`, so every route is pre-rendered to HTML
+at build time — the marketing copy is in the served HTML rather than injected by
+JavaScript, which is what a lead-capture site needs for search and link
+previews. If a page ever exports at a uniform ~17 kB with an empty
+`<div id="root">`, something in the tree is returning `null` during the Node
+pre-render (the root layout's font gate did exactly this — hence the
+`Platform.OS !== 'web'` guard in `app/_layout.tsx`).
 
 ### Dev networking matrix
 
@@ -540,10 +590,29 @@ curl -b trainer.txt -X PATCH http://localhost:8787/bookings/<BOOKING_ID>/status 
 
 ## Phase boundary
 
-Built: **Phase 1 — Foundations**, **Phase 2 — Trainer view**, **Phase 3a —
-Public site + capture** (`POST /leads`, `POST /bookings`), **Phase 3b-1 — Auth
-foundation**, and **Phase 3b-2 — Role dashboards + lead/booking management**
-(above). Intentionally **NOT** built yet:
+Phases 1, 2, 3a and 3b are built: the full schema, the trainer view, the public
+site, BetterAuth, and the role dashboards. Still **NOT** built:
 
 - **Phase 4 — AI & scale:** `POST /dogs/:id/summary` (Anthropic
   claude-haiku-4-5), AI spend-cap reminders, multi-tenant SaaS prep.
+
+## Design direction
+
+The site runs the **playful** direction: fresh green `#3B7A63` with orange
+`#EF9440` as the call-to-action colour, Fredoka + Nunito Sans, pill buttons and
+28–40px radii. Tokens live in `apps/mobile/lib/theme.ts`, which is the
+operational source of truth.
+
+`design_system.md` still describes the earlier austere direction (deep green
+`#1B3A32`, Fraunces/Inter, "copper as a small detail only"). It has **not** been
+rewritten and no longer matches the code — read `lib/theme.ts` first.
+
+Two things in that theme are load-bearing rather than cosmetic:
+
+- **`accent` vs `accentBright`.** `accent` (`#B45D14`) is the TEXT-safe orange
+  at 4.6:1 and is what eyebrows, links and focus rings use. `accentBright`
+  (`#EF9440`) is 2.0:1 on the page background and is for **fills only** —
+  buttons, the curve's line, the paw mark. Do not swap one for the other.
+- **Primary-button labels are dark, not white.** `#2B3A31` on `#EF9440` is
+  5.1:1; off-white on the same orange is 2.0:1 and fails. See
+  `components/ui/PrimaryButton.tsx`.
