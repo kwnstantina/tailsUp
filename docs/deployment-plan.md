@@ -1,6 +1,7 @@
 # TailsUp — Deployment Plan
 
-**Written:** 2026-09-27 · **Status:** not yet deployed; development ongoing
+**Written:** 2026-09-27 · **Updated:** 2026-10-04
+**Status:** web test deploy LIVE on workers.dev; API/DB not deployed; development ongoing
 
 Target topology (decided 2026-09-27):
 
@@ -83,6 +84,70 @@ none can shadow a pre-rendered marketing page.
 
 **Use `npm run build:web -w apps/mobile` as the Cloudflare build command** — plain
 `expo export -p web` skips the post-export step and reintroduces the 404s.
+
+---
+
+## Live test deploy — WEB IS UP (2026-10-04)
+
+**URL:** https://tailsup.konstantinakirtsia.workers.dev
+Cloudflare Worker `tailsup` (static assets), auto-deploying from `main`.
+
+Dashboard build settings that actually work:
+
+| Field | Value |
+| --- | --- |
+| Build command | `npm run build:web -w apps/mobile` |
+| Deploy command | `npx wrangler deploy` |
+| Root directory | `/` |
+
+`deploy:web` exists in the root package.json as a single-command alternative, but
+is NOT currently what the dashboard uses — the two-field setup above is live and
+green. Leave it alone unless the build config breaks again.
+
+**Do not use "Retry deployment" after changing build settings.** A retry replays
+the build configuration captured with the ORIGINAL deployment, so corrected
+fields do not take effect and the previous failure reproduces exactly. Use
+"Create deployment", or push a commit.
+
+### Verified live, 2026-10-04
+
+| Path | Status | Bytes | |
+| --- | --- | --- | --- |
+| `/` | 200 | 62,924 | pre-rendered; 3,908 Greek chars in body, non-empty `#root` |
+| `/about` | 200 | 50,635 | |
+| `/services` | 200 | 58,265 | |
+| `/results` | 200 | 47,894 | |
+| `/contact` | 200 | 46,350 | |
+| `/booking` | 200 | 44,555 | |
+| `/login` | 200 | 29,060 | |
+| `/events/test-123` | 200 | 27,560 | app shell, URL preserved (no redirect) |
+| `/dogs/abc-123/timeline` | 200 | 27,560 | |
+| `/sessions/xyz-9/log` | 200 | 27,560 | |
+| `/nonsense-path` | 404 | 26,870 | 404.html via `not_found_handling` |
+| `/(site)/about` | 404 | — | route-group dirs correctly pruned |
+| `/(app)/client` | 404 | — | |
+
+Byte counts match the local build exactly.
+
+### Bug this deploy caught — `_redirects` destinations must omit `.html`
+
+The first deploy returned `307 Location: /app-shell` for every dynamic route.
+Cloudflare's default `html_handling: "auto-trailing-slash"` strips `.html` and
+redirects, so a destination of `/app-shell.html` was rewritten AND THEN
+redirected — changing the address bar, which defeats a 200 rewrite entirely
+(Expo Router reads the URL to choose the route, so it would have rendered
+not-found). Fixed in `fca353f` by targeting `/app-shell`.
+
+**Not reproducible locally** — `npx serve` implements neither `_redirects` nor
+`html_handling`. Only a real deploy could surface it. Worth remembering before
+trusting any future local check of hosting behaviour.
+
+### Known limitation of this deploy
+
+`EXPO_PUBLIC_API_URL` points at `https://api-staging.tailsupacademy.gr`, which
+does not exist yet. The marketing pages are fully functional; **the lead and
+booking forms and login are not**. Do not share this URL as a preview with
+anyone who will try to submit a form.
 
 ---
 
