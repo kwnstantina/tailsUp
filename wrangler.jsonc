@@ -12,10 +12,18 @@
   //    workspace instead of targeting a specific project."
   // This file is what it looks for.
   //
-  // The dashboard must also be set to build before deploying:
-  //   Build command   npm run build:web -w apps/mobile
-  //   Deploy command  npx wrangler deploy
+  // DASHBOARD SETTINGS (Settings -> Build):
+  //   Build command   <leave EMPTY>
+  //   Deploy command  npm run deploy:web
   //   Root directory  /
+  //
+  // The build deliberately lives in the root package.json ("deploy:web" =
+  // build:web && wrangler deploy) rather than in the dashboard's build-command
+  // field. Two reasons: the deploy is then reproducible from the repo alone, and
+  // "Retry deployment" replays the build configuration captured with the ORIGINAL
+  // deployment — so a corrected dashboard field does not take effect on a retry,
+  // which silently reproduces the previous failure.
+  //
   // Plain `expo export -p web` is NOT enough — build:web also runs
   // scripts/post-export.mjs, which emits app-shell.html and 404.html and prunes
   // the duplicate route-group directories. Skip it and dynamic routes 404.
