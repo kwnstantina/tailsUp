@@ -1,26 +1,36 @@
-# Cloudflare Pages routing for the Expo Router static export.
+# Cloudflare routing for the Expo Router static export.
 # Expo copies everything in apps/mobile/public/ to the export root, so this file
-# ships with `npx expo export -p web` automatically.
+# ships with the build automatically.
 #
 # WHY THIS FILE EXISTS
 # `web.output: "static"` pre-renders one HTML file per route, but a DYNAMIC route
 # can only be pre-rendered as its literal bracket filename:
 #     events/[id].html      dogs/[id]/timeline.html      sessions/[id]/log.html
 # A real request for /events/8f3c-... matches no file on disk -> hard 404, and the
-# client router never gets a chance to run. These rules rewrite (200 = serve, do
-# NOT redirect — the URL in the address bar is preserved, which the client router
-# reads to pick the route) each dynamic path to the app shell.
+# client router never gets a chance to run. These rules rewrite (200 = serve in
+# place, do NOT redirect) each dynamic path to the shared app shell. Preserving
+# the original URL is the whole point: the client router reads it to pick the
+# route. A redirect would change the address bar and render the wrong screen.
 #
-# WHY /app-shell.html AND NOT THE BRACKET FILE
-# All (app) routes export as one BYTE-IDENTICAL client shell, so any of them
-# serves. scripts/post-export.mjs copies that shell to a bracket-free
-# /app-shell.html: square brackets in a _redirects destination are not documented
-# as supported by Cloudflare, and a bracket-free path removes the question.
+# DESTINATION HAS NO .html EXTENSION — THIS IS DELIBERATE
+# Cloudflare's default `html_handling: "auto-trailing-slash"` strips `.html` and
+# issues a 307 to the extensionless path. A destination of `/app-shell.html`
+# therefore gets rewritten AND THEN redirected, so the browser lands on
+# /app-shell and the client router renders not-found instead of the real screen.
+# Verified live on 2026-10-04:
+#     /events/test-123 -> 307 Location: /app-shell
+# Targeting `/app-shell` (no extension) resolves to app-shell.html with a true
+# 200 and no redirect — the same way `/about` serves about.html.
+#
+# /app-shell.html itself is emitted by scripts/post-export.mjs as a bracket-free
+# copy of the (app) client shell; all six (app) routes export byte-identical, and
+# square brackets in a Cloudflare destination are not documented as supported.
 #
 # ORDERING: every rule below is a specific path, never a catch-all splat, so none
 # of them can shadow a real pre-rendered page (notably the marketing pages, which
 # must keep serving their own pre-rendered HTML for search + link previews).
+# Unmatched paths fall through to not_found_handling: "404-page" (wrangler.jsonc).
 
-/events/:id             /app-shell.html   200
-/dogs/:id/timeline      /app-shell.html   200
-/sessions/:id/log       /app-shell.html   200
+/events/:id             /app-shell   200
+/dogs/:id/timeline      /app-shell   200
+/sessions/:id/log       /app-shell   200
