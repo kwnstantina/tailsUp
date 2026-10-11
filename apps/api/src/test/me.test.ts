@@ -5,6 +5,7 @@
 //   GET   /me/homework    — 200 HomeworkDTO[] (joined to exercise).
 //   PATCH /me/homework/:id — 200 own (completedAt set); 404 not-own; 404 missing.
 //   GET   /me/bookings    — 200 BookingDTO[] (the client's bookings).
+//   GET   /me/trainer     — 200 MyTrainerDTO (the client's trainer, via client→trainer join).
 //   Role/authz — a TRAINER session on /me/* → 403; unauthenticated → 401.
 //
 // Strategy mirrors dogs.test.ts: vi.hoisted() + vi.mock('../db/client.js'). select()
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => {
   const mockLimit = vi.fn(() => Promise.resolve(selectResultQueue.shift() ?? []));
   const mockOrderBy = vi.fn(() => Promise.resolve(selectResultQueue.shift() ?? []));
   const mockWhere = vi.fn(() => ({ orderBy: mockOrderBy, limit: mockLimit }));
-  const mockWhereJoin = vi.fn(() => ({ orderBy: mockOrderBy }));
+  const mockWhereJoin = vi.fn(() => ({ orderBy: mockOrderBy, limit: mockLimit }));
   const mockInnerJoin = vi.fn(() => ({ where: mockWhereJoin }));
   const mockFrom = vi.fn(() => ({ where: mockWhere, innerJoin: mockInnerJoin }));
   const mockSelect = vi.fn(() => ({ from: mockFrom }));
@@ -102,6 +103,7 @@ function eventRow(occurredAt: string, thresholdMeters: number, overrides: Record
     sessionId: SESSION_ID,
     occurredAt: new Date(occurredAt),
     triggerType: 'dog',
+    triggerDetail: null,
     thresholdMeters,
     intensity: 5,
     outcome: 'recovered_slowly',
@@ -140,7 +142,7 @@ beforeEach(() => {
     Promise.resolve(mocks.selectResultQueue.shift() ?? []),
   );
   mocks.mockWhere.mockReturnValue({ orderBy: mocks.mockOrderBy, limit: mocks.mockLimit });
-  mocks.mockWhereJoin.mockReturnValue({ orderBy: mocks.mockOrderBy });
+  mocks.mockWhereJoin.mockReturnValue({ orderBy: mocks.mockOrderBy, limit: mocks.mockLimit });
   mocks.mockInnerJoin.mockReturnValue({ where: mocks.mockWhereJoin });
   mocks.mockFrom.mockReturnValue({ where: mocks.mockWhere, innerJoin: mocks.mockInnerJoin });
   mocks.mockSelect.mockReturnValue({ from: mocks.mockFrom });
@@ -350,6 +352,37 @@ describe('GET /me/bookings', () => {
   it('returns 401 when unauthenticated', async () => {
     authState.session = null;
     const res = await app.request('/me/bookings');
+    expect(res.status).toBe(401);
+  });
+});
+
+// ── GET /me/trainer ─────────────────────────────────────────────────────────────────
+describe('GET /me/trainer', () => {
+  it("returns 200 MyTrainerDTO for the client's trainer", async () => {
+    mocks.selectResultQueue.push([{ name: 'Konstantina', email: 'trainer@tailsup.test' }]); // client⋈trainer
+
+    const res = await app.request('/me/trainer');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ name: 'Konstantina', email: 'trainer@tailsup.test' });
+    expect(mocks.mockInnerJoin).toHaveBeenCalled();
+  });
+
+  it('returns 404 when no trainer is found for the client', async () => {
+    mocks.selectResultQueue.push([]); // no client row
+    const res = await app.request('/me/trainer');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 for a trainer session', async () => {
+    authState.session = trainerSession('a0000000-0000-0000-0000-000000000001');
+    const res = await app.request('/me/trainer');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    authState.session = null;
+    const res = await app.request('/me/trainer');
     expect(res.status).toBe(401);
   });
 });

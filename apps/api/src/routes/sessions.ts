@@ -11,6 +11,8 @@
 //      AND the body omitted intervention -> 400 (D-6, keeps intervention NOT NULL
 //      so the moat is never dropped).
 //   4. Insert the behavior_event row; return 201 with BehaviorEventDTO.
+//      `triggerDetail` is kept only for triggerType 'other' (trimmed; empty → null);
+//      for every other trigger it is ignored and stored as null.
 //
 // Enums come ONLY from @tailsup/shared so validation == DB enum == app types (FR-9).
 
@@ -29,6 +31,7 @@ import { behaviorEvent, dog, media, protocol, session } from '../db/schema.js';
 // Built from the shared arrays — exact same literals the pgEnum + app use (FR-9).
 const eventBody = z.object({
   triggerType: z.enum(TRIGGER_TYPES),
+  triggerDetail: z.string().trim().max(100).optional(),
   thresholdMeters: z.number().int().nonnegative(),
   intensity: z.number().int().min(1).max(10),
   outcome: z.enum(OUTCOMES),
@@ -85,12 +88,17 @@ sessions.post('/sessions/:id/events', zValidator('json', eventBody), async (c) =
     intervention = resolved;
   }
 
+  // The free-text detail only means something for an 'other' trigger.
+  const triggerDetail =
+    body.triggerType === 'other' && body.triggerDetail ? body.triggerDetail : null;
+
   // 4. Insert the behavior_event row (occurredAt left to DB defaultNow()).
   const [created] = await db
     .insert(behaviorEvent)
     .values({
       sessionId,
       triggerType: body.triggerType,
+      triggerDetail,
       thresholdMeters: body.thresholdMeters,
       intensity: body.intensity,
       outcome: body.outcome,
@@ -105,6 +113,7 @@ sessions.post('/sessions/:id/events', zValidator('json', eventBody), async (c) =
     sessionId: created.sessionId,
     occurredAt: created.occurredAt.toISOString(),
     triggerType: created.triggerType as BehaviorEventDTO['triggerType'],
+    triggerDetail: created.triggerDetail,
     thresholdMeters: created.thresholdMeters,
     intensity: created.intensity,
     outcome: created.outcome as BehaviorEventDTO['outcome'],
@@ -163,6 +172,7 @@ sessions.get('/sessions/:id/events', async (c) => {
     sessionId: row.sessionId,
     occurredAt: row.occurredAt.toISOString(),
     triggerType: row.triggerType as BehaviorEventDTO['triggerType'],
+    triggerDetail: row.triggerDetail,
     thresholdMeters: row.thresholdMeters,
     intensity: row.intensity,
     outcome: row.outcome as BehaviorEventDTO['outcome'],

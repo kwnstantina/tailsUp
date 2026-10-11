@@ -3,12 +3,13 @@
 //   GET   /trainers/:trainerId/leads    — LeadDTO[]    newest-first (createdAt desc).
 //   GET   /trainers/:trainerId/bookings — BookingDTO[] newest-first (createdAt desc).
 //   PATCH /bookings/:id/status          — transition a booking (200 BookingDTO).
+//   PATCH /leads/:id/status             — mark a lead contacted/lost/new (200 LeadDTO).
 //   POST  /leads/:id/convert            — lead → client (201 ConvertLeadResponse).
 //   POST  /clients/:id/login            — provision a client login (201 ClientLoginDTO).
 //
 // AUTH (DG-2): the two GET lists sit under `/trainers/:trainerId/*`, already gated
 // by the app-level `requireTrainerOwnsParam` prefix guard — the path id equals the
-// session trainer, so no extra guard here. The three MUTATIONS live under
+// session trainer, so no extra guard here. The MUTATIONS live under
 // `/bookings`, `/leads`, `/clients` prefixes that collide with the PUBLIC
 // `POST /leads` + `POST /bookings`, so they carry a ROUTE-SCOPED `requireTrainer`
 // (never a prefix `app.use`, which would gate the public POSTs). Every mutation
@@ -140,6 +141,42 @@ management.patch(
       .returning();
 
     return c.json(toBookingDTO(updated), 200);
+  },
+);
+
+// ── PATCH /leads/:id/status ──────────────────────────────────────────────────────
+// Route-scoped requireTrainer. `converted` is NOT a valid target — a lead only
+// becomes 'converted' through POST /leads/:id/convert (which creates the client).
+// An already-'converted' lead is final → 409.
+const updateLeadStatusBody = z.object({
+  status: z.enum(['new', 'contacted', 'lost']),
+});
+
+management.patch(
+  '/leads/:id/status',
+  requireTrainer,
+  zValidator('json', updateLeadStatusBody),
+  async (c) => {
+    const id = c.req.param('id');
+    const { status } = c.req.valid('json');
+    const user = getUser(c);
+
+    const [row] = await db.select().from(lead).where(eq(lead.id, id)).limit(1);
+    // 404 on missing OR not-theirs — never reveal another trainer's rows (NFR-3).
+    if (!row || row.trainerId !== user?.trainerId) {
+      return c.json({ error: 'lead not found' }, 404);
+    }
+    if (row.status === 'converted') {
+      return c.json({ error: 'lead already converted' }, 409);
+    }
+
+    const [updated] = await db
+      .update(lead)
+      .set({ status })
+      .where(eq(lead.id, id))
+      .returning();
+
+    return c.json(toLeadDTO(updated), 200);
   },
 );
 

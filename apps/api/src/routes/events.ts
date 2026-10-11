@@ -35,6 +35,7 @@ function toBehaviorEventDTO(row: BehaviorEventRow): BehaviorEventDTO {
     sessionId: row.sessionId,
     occurredAt: row.occurredAt.toISOString(),
     triggerType: row.triggerType as BehaviorEventDTO['triggerType'],
+    triggerDetail: row.triggerDetail,
     thresholdMeters: row.thresholdMeters,
     intensity: row.intensity,
     outcome: row.outcome as BehaviorEventDTO['outcome'],

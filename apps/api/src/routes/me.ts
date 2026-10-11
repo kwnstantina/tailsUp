@@ -4,6 +4,7 @@
 //   GET   /me/homework      — HomeworkDTO[] (joined to exercise; incomplete-first).
 //   PATCH /me/homework/:id   — mark (in)complete (200 HomeworkDTO; the ONLY client write).
 //   GET   /me/bookings      — BookingDTO[] (the client's bookings, newest-first).
+//   GET   /me/trainer       — MyTrainerDTO (who the client's trainer is).
 //
 // AUTH: the whole `/me/*` prefix is gated by the app-level `requireClient` guard, so
 // `user` is always a client here. Every handler still reads `getUser(c)` and 403s
@@ -29,10 +30,20 @@ import type {
   ClientProgressDTO,
   DogSummaryDTO,
   HomeworkDTO,
+  MyTrainerDTO,
   ProgressPointDTO,
 } from '@tailsup/shared';
 import { db } from '../db/client.js';
-import { behaviorEvent, booking, dog, exercise, homework, session } from '../db/schema.js';
+import {
+  behaviorEvent,
+  booking,
+  client,
+  dog,
+  exercise,
+  homework,
+  session,
+  trainer,
+} from '../db/schema.js';
 import { getUser, type AppEnv } from '../middleware/auth.js';
 
 export const me = new Hono<AppEnv>();
@@ -224,4 +235,23 @@ me.get('/me/bookings', async (c) => {
     .orderBy(desc(booking.createdAt));
 
   return c.json(rows.map(toBookingDTO), 200);
+});
+
+// ── GET /me/trainer ─────────────────────────────────────────────────────────────
+// The trainer who owns the session client's `client` row (client → trainer join).
+// 404 if the row is somehow missing.
+me.get('/me/trainer', async (c) => {
+  const user = getUser(c);
+  if (!user?.clientId) return c.json({ error: 'forbidden' }, 403);
+
+  const [row] = await db
+    .select({ name: trainer.name, email: trainer.email })
+    .from(client)
+    .innerJoin(trainer, eq(client.trainerId, trainer.id))
+    .where(eq(client.id, user.clientId))
+    .limit(1);
+  if (!row) return c.json({ error: 'trainer not found' }, 404);
+
+  const dto: MyTrainerDTO = { name: row.name, email: row.email };
+  return c.json(dto, 200);
 });

@@ -7,6 +7,7 @@ import type { TriggerType, Outcome, MediaType, BookingType, LeadStatus, BookingS
 // (intervention optional -> defaulted from the dog's Protocol.defaultIntervention)
 export interface CreateBehaviorEventInput {
   triggerType: TriggerType;
+  triggerDetail?: string; // free text, only kept when triggerType is 'other' (<= 100 chars)
   thresholdMeters: number; // int, >= 0
   intensity: number; // int, 1..10
   outcome: Outcome;
@@ -21,6 +22,7 @@ export interface BehaviorEventDTO {
   sessionId: string;
   occurredAt: string; // ISO timestamp
   triggerType: TriggerType;
+  triggerDetail: string | null; // what the 'other' trigger was; null for every other type
   thresholdMeters: number;
   intensity: number;
   outcome: Outcome;
@@ -209,6 +211,12 @@ export interface UpdateBookingStatusInput {
   status: Exclude<BookingStatus, 'requested'>; // 'confirmed' | 'declined' | 'completed' | 'cancelled'
 }
 
+// PATCH /leads/:id/status body (TRAINER). `converted` is NOT a valid target: a lead
+// only becomes 'converted' through POST /leads/:id/convert (which creates the client).
+export interface UpdateLeadStatusInput {
+  status: Exclude<LeadStatus, 'converted'>; // 'new' | 'contacted' | 'lost'
+}
+
 // A domain `client` row (created by lead conversion). NOT the BetterAuth user.
 export interface ClientDTO {
   id: string;
@@ -268,4 +276,10 @@ export interface ProgressPointDTO {
 export interface ClientProgressDTO {
   dog: DogSummaryDTO;
   points: ProgressPointDTO[];
+}
+
+// GET /me/trainer — the trainer who owns the signed-in client's `client` row.
+export interface MyTrainerDTO {
+  name: string;
+  email: string;
 }

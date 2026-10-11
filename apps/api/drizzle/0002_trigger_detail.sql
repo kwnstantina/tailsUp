@@ -1,0 +1,1 @@
+ALTER TABLE "behavior_event" ADD COLUMN "trigger_detail" text;

@@ -9,6 +9,8 @@
 //  - 400 when intervention omitted AND dog has protocol but defaultIntervention is empty.
 //  - 201 with BehaviorEventDTO when all inputs are valid (intervention provided).
 //  - 201 with BehaviorEventDTO when intervention is defaulted from protocol.
+//  - triggerDetail: kept (trimmed) for 'other'; null for any other trigger or
+//    when blank; > 100 chars → 400.
 //
 // Strategy: vi.hoisted() creates the mock functions before the vi.mock() factory
 // runs, avoiding TDZ issues. The Drizzle db client is replaced with a mock whose
@@ -108,6 +110,8 @@ const SESSION_ROW = {
 
 // Builds a mock behavior_event row (returned by INSERT … RETURNING).
 function makeBehaviorEventRow(overrides: {
+  triggerType?: string;
+  triggerDetail?: string | null;
   intervention?: string;
   note?: unknown;
   tags?: unknown;
@@ -116,7 +120,8 @@ function makeBehaviorEventRow(overrides: {
     id: EVENT_ID,
     sessionId: SESSION_ID,
     occurredAt: new Date('2026-06-20T10:00:00.000Z'),
-    triggerType: 'dog',
+    triggerType: overrides.triggerType ?? 'dog',
+    triggerDetail: overrides.triggerDetail ?? null,
     thresholdMeters: 5,
     intensity: 7,
     outcome: 'recovered_slowly',
@@ -353,6 +358,7 @@ describe('POST /sessions/:id/events', () => {
     expect(typeof dto.occurredAt).toBe('string');
     expect(new Date(dto.occurredAt).toISOString()).toBe('2026-06-20T10:00:00.000Z');
     expect(dto.triggerType).toBe('dog');
+    expect(dto.triggerDetail).toBeNull();
     expect(dto.thresholdMeters).toBe(5);
     expect(dto.intensity).toBe(7);
     expect(dto.outcome).toBe('recovered_slowly');
@@ -378,6 +384,62 @@ describe('POST /sessions/:id/events', () => {
     const dto = await res.json();
     expect(dto.note).toBe('near the park gate');
     expect(dto.tags).toEqual(['reactive', 'leash']);
+  });
+
+  // ── triggerDetail (free text for an 'other' trigger) ─────────────────────────
+
+  it("stores and returns a trimmed triggerDetail when triggerType is 'other'", async () => {
+    mocks.selectResultQueue.push([SESSION_ROW]);
+    mocks.insertResult = [makeBehaviorEventRow({ triggerType: 'other', triggerDetail: 'Ποδήλατο' })];
+
+    const res = await postEvent(SESSION_ID, {
+      ...VALID_BODY,
+      triggerType: 'other',
+      triggerDetail: '  Ποδήλατο  ',
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.mockValues).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerType: 'other', triggerDetail: 'Ποδήλατο' }),
+    );
+    const dto = await res.json();
+    expect(dto.triggerType).toBe('other');
+    expect(dto.triggerDetail).toBe('Ποδήλατο');
+  });
+
+  it("stores null triggerDetail when triggerType is not 'other' (field ignored)", async () => {
+    mocks.selectResultQueue.push([SESSION_ROW]);
+    mocks.insertResult = [makeBehaviorEventRow()];
+
+    const res = await postEvent(SESSION_ID, { ...VALID_BODY, triggerDetail: 'Ποδήλατο' });
+
+    expect(res.status).toBe(201);
+    expect(mocks.mockValues).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerType: 'dog', triggerDetail: null }),
+    );
+    const dto = await res.json();
+    expect(dto.triggerDetail).toBeNull();
+  });
+
+  it("stores null triggerDetail when it is whitespace-only for 'other'", async () => {
+    mocks.selectResultQueue.push([SESSION_ROW]);
+    mocks.insertResult = [makeBehaviorEventRow({ triggerType: 'other' })];
+
+    const res = await postEvent(SESSION_ID, { ...VALID_BODY, triggerType: 'other', triggerDetail: '   ' });
+
+    expect(res.status).toBe(201);
+    expect(mocks.mockValues).toHaveBeenCalledWith(
+      expect.objectContaining({ triggerDetail: null }),
+    );
+  });
+
+  it('returns 400 when triggerDetail is longer than 100 chars', async () => {
+    const res = await postEvent(SESSION_ID, {
+      ...VALID_BODY,
+      triggerType: 'other',
+      triggerDetail: 'x'.repeat(101),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('intervention in 201 response is never null (the moat)', async () => {

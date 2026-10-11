@@ -152,6 +152,7 @@ function makeBehaviorEventRow(overrides: Partial<{
   sessionId: string;
   occurredAt: Date;
   triggerType: string;
+  triggerDetail: string | null;
   thresholdMeters: number;
   intensity: number;
   outcome: string;
@@ -164,6 +165,7 @@ function makeBehaviorEventRow(overrides: Partial<{
     sessionId: overrides.sessionId ?? SESSION_ID_1,
     occurredAt: overrides.occurredAt ?? new Date('2026-06-20T10:05:00Z'),
     triggerType: overrides.triggerType ?? 'dog',
+    triggerDetail: overrides.triggerDetail ?? null,
     thresholdMeters: overrides.thresholdMeters ?? 5,
     intensity: overrides.intensity ?? 7,
     outcome: overrides.outcome ?? 'recovered_slowly',
@@ -540,6 +542,7 @@ describe('GET /dogs/:id/timeline', () => {
     expect(ev.sessionId).toBe(SESSION_ID_1);
     expect(typeof ev.occurredAt).toBe('string');
     expect(ev.triggerType).toBe('dog');
+    expect(ev.triggerDetail).toBeNull();
     expect(ev.thresholdMeters).toBe(5);
     expect(ev.intensity).toBe(7);
     expect(ev.outcome).toBe('recovered_slowly');

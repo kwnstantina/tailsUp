@@ -138,6 +138,7 @@ const EVENT_ROW = {
   sessionId: SESSION_ID,
   occurredAt: new Date('2026-06-20T10:05:00Z'),
   triggerType: 'dog',
+  triggerDetail: null,
   thresholdMeters: 5,
   intensity: 7,
   outcome: 'recovered_slowly',
@@ -267,6 +268,7 @@ describe('GET /events/:id', () => {
     expect(body.sessionId).toBe(SESSION_ID);
     expect(typeof body.occurredAt).toBe('string');
     expect(body.triggerType).toBe('dog');
+    expect(body.triggerDetail).toBeNull();
     expect(body.thresholdMeters).toBe(5);
     expect(body.intensity).toBe(7);
     expect(body.outcome).toBe('recovered_slowly');

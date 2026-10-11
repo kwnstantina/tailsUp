@@ -95,6 +95,7 @@ function makeEventRow(overrides: Partial<{
     sessionId: overrides.sessionId ?? SESSION_ID,
     occurredAt: overrides.occurredAt ?? new Date('2026-06-20T10:05:00Z'),
     triggerType: 'dog',
+    triggerDetail: null,
     thresholdMeters: 5,
     intensity: 7,
     outcome: 'recovered_slowly',
@@ -184,6 +185,7 @@ describe('GET /sessions/:id/events', () => {
     expect(item.sessionId).toBe(SESSION_ID);
     expect(typeof item.occurredAt).toBe('string');
     expect(item.triggerType).toBe('dog');
+    expect(item.triggerDetail).toBeNull();
     expect(item.thresholdMeters).toBe(5);
     expect(item.intensity).toBe(7);
     expect(item.outcome).toBe('recovered_slowly');

@@ -3,6 +3,7 @@
 // Covers (AC-3b-6/7/8):
 //   GET   /trainers/:id/leads|bookings — 200 newest-first; wrong trainer → 403.
 //   PATCH /bookings/:id/status         — 200 own; 400 invalid/'requested'; 404 not-theirs.
+//   PATCH /leads/:id/status            — 200 own; 400 'converted'/garbage; 409 already-converted; 404 not-theirs.
 //   POST  /leads/:id/convert           — 201 (client+lead txn); 409 already-converted; 404 not-theirs.
 //   POST  /clients/:id/login           — 201 (role/clientId patch); 409 dup email; 404 not-theirs.
 //   Role/authz — a CLIENT session on any trainer mutation → 403; unauthenticated → 401.
@@ -179,6 +180,13 @@ function patchStatus(id: string, body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+function patchLeadStatus(id: string, body: Record<string, unknown>) {
+  return app.request(`/leads/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 function convert(id: string) {
   return app.request(`/leads/${id}/convert`, { method: 'POST' });
 }
@@ -264,6 +272,70 @@ describe('PATCH /bookings/:id/status', () => {
   it('returns 401 when unauthenticated', async () => {
     authState.session = null;
     const res = await patchStatus(BOOKING_ID, { status: 'confirmed' });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ── PATCH /leads/:id/status ───────────────────────────────────────────────────────
+describe('PATCH /leads/:id/status', () => {
+  it('returns 200 LeadDTO with the new status (contacted)', async () => {
+    mocks.selectResultQueue.push([leadRow()]); // load
+    mocks.updateResultQueue.push([leadRow({ status: 'contacted' })]); // update.returning
+    const res = await patchLeadStatus(LEAD_ID, { status: 'contacted' });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('contacted');
+    expect(body.id).toBe(LEAD_ID);
+    expect(mocks.mockSet).toHaveBeenCalledWith({ status: 'contacted' });
+  });
+
+  it('returns 200 when archiving a lead (lost)', async () => {
+    mocks.selectResultQueue.push([leadRow({ status: 'contacted' })]);
+    mocks.updateResultQueue.push([leadRow({ status: 'lost' })]);
+    const res = await patchLeadStatus(LEAD_ID, { status: 'lost' });
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe('lost');
+  });
+
+  it("returns 400 for 'converted' (only reachable through /convert)", async () => {
+    const res = await patchLeadStatus(LEAD_ID, { status: 'converted' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a garbage status value', async () => {
+    const res = await patchLeadStatus(LEAD_ID, { status: 'banana' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 409 when the lead is already converted', async () => {
+    mocks.selectResultQueue.push([leadRow({ status: 'converted', clientId: CLIENT_ID })]);
+    const res = await patchLeadStatus(LEAD_ID, { status: 'lost' });
+    expect(res.status).toBe(409);
+    expect(mocks.mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for another trainer's lead (never reveals it)", async () => {
+    mocks.selectResultQueue.push([leadRow({ trainerId: OTHER_TRAINER_ID })]);
+    const res = await patchLeadStatus(LEAD_ID, { status: 'contacted' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'lead not found' });
+  });
+
+  it('returns 404 for a missing lead', async () => {
+    mocks.selectResultQueue.push([]); // not found
+    const res = await patchLeadStatus(LEAD_ID, { status: 'contacted' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 for a client session (route-scoped requireTrainer)', async () => {
+    authState.session = clientSession(CLIENT_ID);
+    const res = await patchLeadStatus(LEAD_ID, { status: 'contacted' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    authState.session = null;
+    const res = await patchLeadStatus(LEAD_ID, { status: 'contacted' });
     expect(res.status).toBe(401);
   });
 });

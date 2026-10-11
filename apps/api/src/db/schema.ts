@@ -200,6 +200,7 @@ export const session = pgTable(
 // behavior_event  (the moat)
 //   - intervention is text().notNull() — NEVER null (D-6).
 //   - tags is jsonb $type<string[]>(), nullable, GIN-indexed.
+//   - triggerDetail is free text for triggerType 'other' only; null otherwise.
 //   - composite index on (sessionId, occurredAt) + GIN on tags (AC-5).
 // ---------------------------------------------------------------------------
 export const behaviorEvent = pgTable(
@@ -211,6 +212,7 @@ export const behaviorEvent = pgTable(
       .references(() => session.id),
     occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     triggerType: triggerTypeEnum().notNull(),
+    triggerDetail: text(), // nullable — set only when triggerType is 'other'
     thresholdMeters: integer().notNull(), // validated >= 0 at the validation layer
     intensity: integer().notNull(), // validated 1..10 at the validation layer
     outcome: outcomeEnum().notNull(),
