@@ -28,16 +28,8 @@ No linter configured (expected). **All 3b-2 ACs met** (AC-3b-1/6/7/8/9/10/11/12/
 _None._
 
 ### Important
-1. **Live-DB per-role walkthrough pending (AC-3b-6/7/8/9/10).** The role-scoped
-   reads/writes were verified by the 41 new endpoint tests (management 24 + me 17,
-   role rejection asserted by request) + static review only — no live PostgreSQL
-   here. Before demo/deploy run the manual steps in `README.md` (Phase 3b-2 →
-   "Seed logins + per-role verify") and `docs/reference/integration-verification-phase3b2.md`
-   §4: Docker Postgres → `db:migrate` (idempotent; no 3b-2 migration) → `db:seed`
-   (creates both logins) → start API → sign in as each role → exercise `/me/*`
-   (client) and the trainer mutations (convert/status/create-login) → confirm each
-   role sees only its own data. 3b-1's live sign-in smoke test is a prerequisite.
-   Confidence high (mocked suite + web export green).
+_None._ The live-DB per-role walkthrough was done on 2026-10-11 — see
+"Live-DB verification" below.
 
 ### Minor / follow-ups (non-blocking)
 1. **Deferred dependency advisories (carried from Phases 1/2/3a, unchanged).**
@@ -50,7 +42,41 @@ _None._
 2. **No 3b-1 integration-verification ledger entry exists** (this file jumps 3a →
    2). Pre-existing gap; 3b-1's verification lives in
    `docs/reference/integration-verification-phase3b1.md` (its live sign-in smoke
-   test is the one item still pending there). Not a 3b-2 blocker.
+   test was done on 2026-10-11 as part of the walkthrough below). Not a 3b-2 blocker.
+
+## Live-DB verification — DONE 2026-10-11
+
+First run of the app against a real PostgreSQL (Docker `postgres:16`, local only;
+Node 24.20.0). Closes 3b-2 Important #1 (AC-3b-6..10), the 3b-1 live sign-in
+smoke test, and the API half of Phase 1 Important #1 (AC-3/6/7).
+
+- `db:migrate` applied `0001_betterauth_tables` onto a DB already at `0000` → 15
+  tables (11 domain + `user`/`account`/`auth_session`/`verification`). Incremental
+  migration works.
+- `db:seed` → both logins; `GET /health` → `{"status":"ok","db":"up"}`.
+- **34/34 per-role checks pass** (scripted, by HTTP status):
+  - **Signed out:** `/me/*` → 401. A wrong password → 401. After sign-out → 401.
+  - **Client:** `/me/progress` returns Rex with 5 threshold points, `/me/homework`
+    returns 2 rows, and `/me/bookings` works. Homework can be marked done and
+    undone; an id that isn't theirs → 404.
+  - **Client calling trainer endpoints → 403:** booking status, lead convert, and
+    `/trainers/:id/leads`.
+  - **Trainer:** sees new public `POST /leads` + `POST /bookings` rows in their
+    lists. Calling `/me/*` → 403, another trainer's id → 403. Booking →
+    `confirmed` 200; → `requested` 400; unknown booking 404. Lead convert 201,
+    re-convert 409. Creating a client login 201; same email again → 409.
+  - **Newly created client:** signs in and sees 0 dogs and 0 homework (none of the
+    seed client's data); patching the seed client's homework → 404.
+- **Session cookie:** `better-auth.session_token`; `HttpOnly; SameSite=Lax`;
+  credentialed CORS echoes the allowed origin. This matches the W4 assumption in
+  `docs/deployment-plan.md`.
+- **`POST /sessions/:id/events`:** full body → 201 (tags stored as JSONB). Leaving
+  out `intervention` → 201, filled from the protocol default (`u-turn`). Bad enum
+  or `intensity: 11` → 400. Unknown session → 404. Signed out → 401.
+  `behavior_event_tags_gin` exists.
+
+**Not covered:** the Expo web UI round-trip. Everything above was checked over
+HTTP, not by clicking through `/login` in a browser.
 
 ## PHASE 3b-2 (integration) — RESOLVED THIS PASS
 1. **API typecheck was broken by an invalid `ignoreDeprecations` value (AC-3b-1).**
@@ -528,7 +554,10 @@ Expo web bundle exports successfully (proving the `@tailsup/shared` monorepo
 wiring through Metro with no metro.config.js — Risk R1 cleared).
 
 ### Important
-1. **Live-DB smoke test pending (AC-3 / AC-6 / AC-7).** These DB-runtime criteria
+1. **Live-DB smoke test — API half DONE 2026-10-11** (migrate, `/health` db up,
+   `POST /sessions/:id/events` happy path + 400/404; see "Live-DB verification"
+   at the top of this file). Only the Expo web round-trip remains.
+   *Original note:* **Live-DB smoke test pending (AC-3 / AC-6 / AC-7).** These DB-runtime criteria
    were verified via the mocked-DB unit tests (31 passing) plus static review of
    `apps/api/drizzle/0000_amused_brood.sql` and `src/db/schema.ts`. They have NOT
    been exercised against a real PostgreSQL (none available — no Docker daemon, no

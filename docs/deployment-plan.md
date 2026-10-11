@@ -296,9 +296,9 @@ It reads no environment variables for those accounts — the `SEED_TRAINER_EMAIL
 - [x] `.github/workflows/ci.yml` — typecheck (3 workspaces) + 226 api tests +
       `build:web` on every push to main and every PR. Green on first run (7f2ab79).
       Uses `node-version-file: .nvmrc` and `npm ci` so a drifted lockfile fails loudly.
-- [ ] **`db-backup.yml` is failing on every scheduled run** — no database, no secrets.
-      Harmless but it emails on each failure. Either set the W6 secrets or comment out
-      the `schedule:` trigger (leaving `workflow_dispatch`) until the DB exists.
+- [x] **`db-backup.yml` was failing on every scheduled run** (no database, no secrets).
+      The `schedule:` trigger is commented out until the DB exists (39f48fb), and
+      `workflow_dispatch` is still available. Re-enable it as part of W6.
 
 ### W9. Rate limiting — *accept or upgrade*
 `apps/api/src/app.ts` uses an in-memory limiter (10 req/min/IP) on `POST /leads` and
@@ -405,10 +405,11 @@ W5, W6, M6–M7, then the live-DB per-role walkthrough still open in
 
 ## Two open risks carried from the ledger
 
-1. **Nothing has ever run against a real Postgres.** Migrations, seed, and the per-role
-   walkthrough are verified only by the mocked test suite and static review. This is
-   already an open *Important* item for Phase 1 (AC-3/6/7) and Phase 3b-2
-   (AC-3b-6..10). Do the live walkthrough before pointing a domain at anything.
+1. ~~**Nothing has ever run against a real Postgres.**~~ **Resolved 2026-10-11.**
+   Migrations, the seed, and the per-role walkthrough all passed against local
+   `postgres:16` (34/34 checks), and the session cookie attributes match W4. Details
+   are under "Live-DB verification" in `Issues - Pending Items.md`. Still not checked
+   in a browser: the Expo web `/login` round-trip.
 
 2. **`npm audit` triage is stale.** Now **40 vulnerabilities (1 critical, 15 high, 24
    moderate)**; `Issues - Pending Items.md` records "23 moderate, none high/critical".
