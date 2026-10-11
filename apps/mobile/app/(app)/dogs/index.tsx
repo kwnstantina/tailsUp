@@ -1,272 +1,142 @@
 // =============================================================================
-// Dog list / entry point (Phase 2, Unit C — FR-M6)
+// /dogs — every dog the trainer works with.
 //
-// Reads EXPO_PUBLIC_TRAINER_ID (static dot-access — G-1) and lists the trainer's
-// dogs via GET /trainers/:trainerId/dogs. Each dog offers two actions:
-//   - Open timeline  -> /dogs/[id]/timeline
-//   - Start session  -> POST /dogs/:id/sessions, then /sessions/[id]/log
-// Loading / empty / error states mirror the Phase 1 health screen.
+// A card per dog (trend sparkline + "Νέα συνεδρία"). Starting a session creates
+// it (POST /dogs/:id/sessions) and drops straight into the logging screen, with
+// the dog's name passed along so that screen can say whose session it is.
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import type { DogSummaryDTO } from '@tailsup/shared';
+import { useLang } from '../../../lib/i18n';
 import { ApiError, getDogs, startSession } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Muted,
+  Notice,
+  Screen,
+  Title,
+} from '../../../components/app/AppKit';
+import { DogCard } from '../../../components/app/DogCard';
+import { useDogTrends } from '../../../components/app/useDogTrends';
 
-// The trainer management routes. Cast to Href because Metro regenerates the
-// typed-route union only on `expo start`/export — the new /manage/* routes are
-// not yet in .expo/types/router.d.ts at typecheck time (see plan typed-route note).
-const MANAGE_LEADS = '/manage/leads' as Href;
-const MANAGE_BOOKINGS = '/manage/bookings' as Href;
+const copy = {
+  el: {
+    title: 'Σκύλοι',
+    subtitle: 'Επιλέξτε σκύλο για να δείτε την πρόοδό του ή να ξεκινήσετε συνεδρία.',
+    loading: 'Φόρτωση σκύλων…',
+    errorTitle: 'Δεν ήταν δυνατή η φόρτωση',
+    retry: 'Δοκίμασε ξανά',
+    noTrainer: 'Ο λογαριασμός δεν έχει προφίλ εκπαιδευτή.',
+    empty: 'Δεν υπάρχουν σκύλοι ακόμα. Μετατρέψτε ένα αίτημα σε πελάτη για να ξεκινήσετε.',
+    startFailed: 'Η συνεδρία δεν ξεκίνησε:',
+  },
+  en: {
+    title: 'Dogs',
+    subtitle: 'Pick a dog to see their progress or start a session.',
+    loading: 'Loading dogs…',
+    errorTitle: 'Could not load dogs',
+    retry: 'Try again',
+    noTrainer: 'This account has no trainer profile.',
+    empty: 'No dogs yet. Convert a request into a client to get started.',
+    startFailed: 'Could not start the session:',
+  },
+} as const;
 
 type Status =
   | { kind: 'loading' }
   | { kind: 'success'; dogs: DogSummaryDTO[] }
   | { kind: 'error'; message: string };
 
+function messageFor(err: unknown): string {
+  return err instanceof ApiError ? err.message : String(err);
+}
+
 export default function DogsScreen() {
   const router = useRouter();
+  const { lang } = useLang();
+  const c = copy[lang];
   const { data: session } = useSession();
-  // Phase 3b: the trainer id comes from the authenticated session (retires the
-  // EXPO_PUBLIC_TRAINER_ID stop-gap). A client who reaches this screen has no
-  // trainerId — the load surfaces that, and the API would 403 regardless.
   const trainerId = session?.user?.trainerId ?? null;
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus({ kind: 'loading' });
     if (!trainerId) {
-      setStatus({
-        kind: 'error',
-        message: 'This account has no trainer profile. Sign in with a trainer account.',
-      });
+      setStatus({ kind: 'error', message: copy[lang].noTrainer });
       return;
     }
     try {
-      const dogs = await getDogs(trainerId);
-      setStatus({ kind: 'success', dogs });
+      setStatus({ kind: 'success', dogs: await getDogs(trainerId) });
     } catch (err) {
       setStatus({ kind: 'error', message: messageFor(err) });
     }
-  }, [trainerId]);
+  }, [trainerId, lang]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const onStartSession = useCallback(
-    async (dogId: string) => {
-      setStartingId(dogId);
+  const trends = useDogTrends(status.kind === 'success' ? status.dogs : null);
+
+  const onStart = useCallback(
+    async (dog: DogSummaryDTO) => {
+      setStartingId(dog.id);
+      setStartError(null);
       try {
-        const session = await startSession(dogId);
-        router.push({ pathname: '/sessions/[id]/log', params: { id: session.id } });
+        const s = await startSession(dog.id);
+        router.push({ pathname: '/sessions/[id]/log', params: { id: s.id, dog: dog.name, dogId: dog.id } });
       } catch (err) {
-        setStatus({ kind: 'error', message: messageFor(err) });
+        setStartError(`${copy[lang].startFailed} ${messageFor(err)}`);
       } finally {
         setStartingId(null);
       }
     },
-    [router],
+    [router, lang],
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>My Dogs</Text>
-        <Text style={styles.subheading}>Pick a dog to view its timeline or start a session</Text>
+    <Screen>
+      <View style={styles.header}>
+        <Title>{c.title}</Title>
+        <Muted size={16}>{c.subtitle}</Muted>
+      </View>
 
-        <View style={styles.manageRow}>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => router.push(MANAGE_LEADS)}
-            style={({ focused, pressed }) => [
-              styles.manageButton,
-              focused && styles.manageButtonFocused,
-              pressed && styles.buttonPressed,
-              Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-            ]}
-          >
-            <Text style={styles.manageButtonText}>Leads</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => router.push(MANAGE_BOOKINGS)}
-            style={({ focused, pressed }) => [
-              styles.manageButton,
-              focused && styles.manageButtonFocused,
-              pressed && styles.buttonPressed,
-              Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-            ]}
-          >
-            <Text style={styles.manageButtonText}>Bookings</Text>
-          </Pressable>
-        </View>
+      {startError && <Notice tone="error">{startError}</Notice>}
 
-        {status.kind === 'loading' && (
-          <View style={[styles.card, styles.cardNeutral]}>
-            <ActivityIndicator color="#2563eb" />
-            <Text style={styles.cardTitle}>Loading dogs…</Text>
-          </View>
-        )}
-
-        {status.kind === 'error' && (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.cardTitle}>✕ Could not load dogs</Text>
-            <Text style={styles.cardBody}>{status.message}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void load()}
-              style={({ pressed }) => [styles.retryButton, pressed && styles.buttonPressed]}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {status.kind === 'success' && status.dogs.length === 0 && (
-          <View style={[styles.card, styles.cardNeutral]}>
-            <Text style={styles.cardTitle}>No dogs yet</Text>
-            <Text style={styles.cardBody}>
-              This trainer has no dogs. Seed a client + dog, then reload.
-            </Text>
-          </View>
-        )}
-
-        {status.kind === 'success' &&
-          status.dogs.map((dog) => (
-            <View key={dog.id} style={styles.dogCard}>
-              <View style={styles.dogHeader}>
-                <Text style={styles.dogName}>{dog.name}</Text>
-                <Text style={styles.dogMeta}>
-                  {dog.breed} · {formatAge(dog.ageMonths)}
-                </Text>
-              </View>
-              <View style={styles.actionRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    router.push({ pathname: '/dogs/[id]/timeline', params: { id: dog.id } })
-                  }
-                  style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-                >
-                  <Text style={styles.secondaryButtonText}>Timeline</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={startingId === dog.id}
-                  onPress={() => void onStartSession(dog.id)}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    startingId === dog.id && styles.buttonDisabled,
-                    pressed && styles.buttonPressed,
-                  ]}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {startingId === dog.id ? 'Starting…' : 'Start session'}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+      {status.kind === 'loading' && <LoadingState label={c.loading} />}
+      {status.kind === 'error' && (
+        <ErrorState title={c.errorTitle} message={status.message} retryLabel={c.retry} onRetry={() => void load()} />
+      )}
+      {status.kind === 'success' && status.dogs.length === 0 && <EmptyState message={c.empty} />}
+      {status.kind === 'success' && status.dogs.length > 0 && (
+        <View style={styles.grid}>
+          {status.dogs.map((dog) => (
+            <DogCard
+              key={dog.id}
+              dog={dog}
+              lang={lang}
+              points={trends[dog.id]?.points}
+              lastSessionAt={trends[dog.id]?.lastSessionAt}
+              onOpen={() => router.push({ pathname: '/dogs/[id]/timeline', params: { id: dog.id } })}
+              onStart={() => void onStart(dog)}
+              starting={startingId === dog.id}
+            />
           ))}
-      </ScrollView>
-    </SafeAreaView>
+        </View>
+      )}
+    </Screen>
   );
 }
 
-function formatAge(ageMonths: number): string {
-  if (ageMonths < 12) return `${ageMonths} mo`;
-  const years = Math.floor(ageMonths / 12);
-  const months = ageMonths % 12;
-  return months === 0 ? `${years}y` : `${years}y ${months}mo`;
-}
-
-function messageFor(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  return 'Something went wrong. Please try again.';
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' },
-  container: {
-    padding: 20,
-    gap: 14,
-    maxWidth: 560,
-    width: '100%',
-    alignSelf: 'center',
-    ...Platform.select({ web: { minHeight: '100%' as unknown as number }, default: {} }),
-  },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
-  subheading: { fontSize: 14, color: '#64748b', marginTop: -6 },
-  manageRow: { flexDirection: 'row', gap: 10 },
-  manageButton: {
-    backgroundColor: '#1B3A32',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  manageButtonFocused: { borderColor: '#B07D48' },
-  manageButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
-  card: { borderRadius: 12, padding: 16, borderWidth: 1, gap: 8 },
-  cardNeutral: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardError: { backgroundColor: '#fef2f2', borderColor: '#fca5a5' },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  cardBody: { fontSize: 14, color: '#334155' },
-  dogCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    gap: 12,
-  },
-  dogHeader: { gap: 2 },
-  dogName: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  dogMeta: { fontSize: 13, color: '#64748b' },
-  actionRow: { flexDirection: 'row', gap: 10 },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
-  retryButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  retryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  buttonPressed: { opacity: 0.85 },
-  buttonDisabled: { backgroundColor: '#93c5fd' },
+  header: { gap: 6 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
 });

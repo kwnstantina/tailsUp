@@ -1,122 +1,175 @@
 // =============================================================================
-// /manage/leads — TRAINER lead triage (Phase 3b-2, Unit C2 · AC-3b-9)
+// /manage/leads — website requests (Phase 3b-2, redesigned).
 //
-// Reads the trainer id from the session, lists incoming leads newest-first with
-// a StatusBadge, and drives the two-step provisioning flow (DG-1):
-//   1. Convert  — POST /leads/:id/convert creates the domain client + flips the
-//      lead to 'converted' (shown for 'new'/'contacted' leads).
-//   2. Create login — once converted, a mini-form (email + password) calls
-//      POST /clients/:id/login to issue the client's BetterAuth login.
-// ApiError messages (409 already-converted / email-exists, 404 not-theirs) are
-// surfaced inline. Loading via the discriminated-union Status pattern.
+// A list + detail: filter tabs by stage (Νέα / Σε επαφή / Πελάτες / Αρχείο),
+// pick a request, act on it. On wide screens list and detail sit side by side;
+// on a phone the detail replaces the list with a back button.
+//
+// Actions per stage:
+//   new / contacted → "Έγινε πελάτης" (POST /leads/:id/convert), "Σε επαφή"
+//                     (PATCH /leads/:id/status), "Αρχειοθέτηση" (→ lost)
+//   lost            → "Επαναφορά" (→ new)
+//   converted       → create the client's login (POST /clients/:id/login). The
+//                     trainer sets the first password; "Δημιουργία" fills in a
+//                     strong one they can read out or send.
 // =============================================================================
 
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ClientDTO, LeadDTO } from '@tailsup/shared';
-import { colors, fontFallback, layout, radii, space, type as t } from '../../../lib/theme';
-import { useLang, type Lang } from '../../../lib/i18n';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { ClientDTO, LeadDTO, LeadStatus } from '@tailsup/shared';
+import { colors, fontFallback, fonts, radii, useResponsive } from '../../../lib/theme';
+import { useLang } from '../../../lib/i18n';
 import { useSession } from '../../../lib/auth-client';
-import { ApiError, convertLead, createClientLogin, getTrainerLeads } from '../../../lib/api';
-import { StatusBadge } from '../../../components/StatusBadge';
+import { ApiError, convertLead, createClientLogin, getTrainerLeads, updateLeadStatus } from '../../../lib/api';
+import { formatAgo, formatDayTime } from '../../../lib/labels';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  LoadingState,
+  Muted,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  Title,
+  type PillTone,
+} from '../../../components/app/AppKit';
+import {
+  IconArchive,
+  IconBack,
+  IconCheckMark,
+  IconEye,
+  IconEyeOff,
+  IconMailOutline,
+  IconPhoneOutline,
+} from '../../../components/app/AppIcons';
+
+type Tab = 'new' | 'contacted' | 'converted' | 'lost';
+const TABS: Tab[] = ['new', 'contacted', 'converted', 'lost'];
 
 const copy = {
   el: {
-    heading: 'Ενδιαφερόμενοι',
-    subheading: 'Νέα αιτήματα από τον ιστότοπο — μετατροπή σε πελάτη και δημιουργία λογαριασμού.',
+    title: 'Αιτήματα',
+    subtitle: 'Μηνύματα από τη φόρμα επικοινωνίας του ιστότοπου.',
+    tabs: { new: 'Νέα', contacted: 'Σε επαφή', converted: 'Πελάτες', lost: 'Αρχείο' } as Record<Tab, string>,
+    status: { new: 'Νέο', contacted: 'Σε επαφή', converted: 'Πελάτης', lost: 'Αρχείο' } as Record<LeadStatus, string>,
     loading: 'Φόρτωση…',
     errorTitle: 'Δεν ήταν δυνατή η φόρτωση',
     retry: 'Δοκίμασε ξανά',
-    noTrainer: 'Ο λογαριασμός δεν έχει προφίλ εκπαιδευτή. Συνδέσου ως εκπαιδευτής.',
-    empty: 'Δεν υπάρχουν ενδιαφερόμενοι ακόμη.',
-    source: 'Πηγή',
-    convert: 'Μετατροπή σε πελάτη',
-    converting: 'Μετατροπή…',
-    convertedTo: (name: string) => `Μετατράπηκε σε πελάτη: ${name}`,
-    createLogin: 'Δημιουργία λογαριασμού',
-    creating: 'Δημιουργία…',
+    noTrainer: 'Ο λογαριασμός δεν έχει προφίλ εκπαιδευτή.',
+    empty: { new: 'Κανένα νέο αίτημα.', contacted: 'Κανείς σε επαφή.', converted: 'Κανένας πελάτης από αιτήματα ακόμα.', lost: 'Το αρχείο είναι άδειο.' } as Record<Tab, string>,
+    pick: 'Επιλέξτε ένα αίτημα για να δείτε τις λεπτομέρειες.',
+    back: 'Πίσω στη λίστα',
+    from: (src: string, when: string) => `Από ${src === 'website' || src.startsWith('website') ? 'τον ιστότοπο' : src} · ${when}`,
+    message: 'Μήνυμα',
+    noMessage: 'Χωρίς μήνυμα.',
+    call: 'Κλήση',
     email: 'Email',
-    password: 'Κωδικός (≥ 8 χαρακτήρες)',
-    loginIssued: (email: string) => `✓ Ο λογαριασμός δημιουργήθηκε για ${email}`,
+    next: 'Επόμενο βήμα',
+    convert: 'Έγινε πελάτης',
+    contacted: 'Σε επαφή',
+    archive: 'Αρχειοθέτηση',
+    restore: 'Επαναφορά',
+    convertHint: 'Δημιουργεί τον πελάτη. Στη συνέχεια μπορείτε να του φτιάξετε λογαριασμό για την εφαρμογή.',
+    login: 'Λογαριασμός πελάτη',
+    loginHelp: 'Ορίστε email και αρχικό κωδικό και στείλτε τα στον πελάτη.',
+    loginEmail: 'Email σύνδεσης',
+    password: 'Κωδικός (τουλάχιστον 8 χαρακτήρες)',
+    generate: 'Δημιουργία',
+    show: 'Εμφάνιση κωδικού',
+    hide: 'Απόκρυψη κωδικού',
+    createLogin: 'Δημιουργία λογαριασμού',
+    issued: (email: string) => `✓ Ο λογαριασμός δημιουργήθηκε για ${email}.`,
   },
   en: {
-    heading: 'Leads',
-    subheading: 'Incoming website enquiries — convert to a client and issue a login.',
+    title: 'Requests',
+    subtitle: "Messages from the website's contact form.",
+    tabs: { new: 'New', contacted: 'In touch', converted: 'Clients', lost: 'Archive' } as Record<Tab, string>,
+    status: { new: 'New', contacted: 'In touch', converted: 'Client', lost: 'Archived' } as Record<LeadStatus, string>,
     loading: 'Loading…',
-    errorTitle: 'Could not load leads',
+    errorTitle: 'Could not load requests',
     retry: 'Try again',
-    noTrainer: 'This account has no trainer profile. Sign in as a trainer.',
-    empty: 'No leads yet.',
-    source: 'Source',
-    convert: 'Convert to client',
-    converting: 'Converting…',
-    convertedTo: (name: string) => `Converted to client: ${name}`,
-    createLogin: 'Create login',
-    creating: 'Creating…',
+    noTrainer: 'This account has no trainer profile.',
+    empty: { new: 'No new requests.', contacted: 'Nobody in touch.', converted: 'No clients from requests yet.', lost: 'The archive is empty.' } as Record<Tab, string>,
+    pick: 'Pick a request to see the details.',
+    back: 'Back to the list',
+    from: (src: string, when: string) => `From ${src.startsWith('website') ? 'the website' : src} · ${when}`,
+    message: 'Message',
+    noMessage: 'No message.',
+    call: 'Call',
     email: 'Email',
-    password: 'Password (≥ 8 characters)',
-    loginIssued: (email: string) => `✓ Login issued for ${email}`,
+    next: 'Next step',
+    convert: 'Became a client',
+    contacted: 'In touch',
+    archive: 'Archive',
+    restore: 'Restore',
+    convertHint: 'Creates the client. You can then set up their app login.',
+    login: 'Client login',
+    loginHelp: 'Set an email and a first password, then send them to the client.',
+    loginEmail: 'Login email',
+    password: 'Password (at least 8 characters)',
+    generate: 'Generate',
+    show: 'Show password',
+    hide: 'Hide password',
+    createLogin: 'Create login',
+    issued: (email: string) => `✓ Login created for ${email}.`,
   },
 } as const;
 
-type Copy = (typeof copy)[Lang];
+const STATUS_TONE: Record<LeadStatus, PillTone> = { new: 'peach', contacted: 'mint', converted: 'mint', lost: 'neutral' };
 
-type Status =
-  | { kind: 'idle' }
-  | { kind: 'pending' }
-  | { kind: 'success'; leads: LeadDTO[] }
-  | { kind: 'error'; message: string };
+type Status = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; leads: LeadDTO[] };
 
-interface LoginForm {
-  email: string;
-  password: string;
-  submitting: boolean;
-  error: string | null;
-  issuedEmail: string | null;
-}
-
-const EMPTY_FORM: LoginForm = { email: '', password: '', submitting: false, error: null, issuedEmail: null };
+const webCursor = Platform.select({ web: { cursor: 'pointer' } as object, default: {} });
 
 function messageFor(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  return 'Something went wrong. Please try again.';
+  return err instanceof ApiError ? err.message : String(err);
 }
 
-export default function ManageLeadsScreen() {
+/** A readable 12-character password without look-alike characters. */
+function generatePassword(): string {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function contactLinks(contact: string): { email?: string; phone?: string } {
+  const email = /[^\s@]+@[^\s@]+\.[^\s@]+/.exec(contact)?.[0];
+  const phone = /\+?[\d\s-]{8,}/.exec(contact)?.[0]?.replace(/[\s-]/g, '');
+  return { email, phone };
+}
+
+export default function LeadsScreen() {
   const { lang } = useLang();
   const c = copy[lang];
+  const { isWide } = useResponsive();
   const { data: session } = useSession();
   const trainerId = session?.user?.trainerId ?? null;
 
-  const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [convertingId, setConvertingId] = useState<string | null>(null);
-  const [convertError, setConvertError] = useState<{ id: string; message: string } | null>(null);
-  // clientId per lead (from convert this session) so we can provision the login.
-  const [clientByLead, setClientByLead] = useState<Record<string, ClientDTO>>({});
-  // login mini-form state keyed by leadId.
-  const [forms, setForms] = useState<Record<string, LoginForm>>({});
+  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [tab, setTab] = useState<Tab>('new');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [clients, setClients] = useState<Record<string, ClientDTO>>({});
+  const [loginEmail, setLoginEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [issued, setIssued] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
-    setStatus({ kind: 'pending' });
+    setStatus({ kind: 'loading' });
     if (!trainerId) {
       setStatus({ kind: 'error', message: copy[lang].noTrainer });
       return;
     }
     try {
       const leads = await getTrainerLeads(trainerId);
-      // Defensive newest-first (server already orders by createdAt desc).
       leads.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setStatus({ kind: 'success', leads });
+      setStatus({ kind: 'ready', leads });
     } catch (err) {
       setStatus({ kind: 'error', message: messageFor(err) });
     }
@@ -126,261 +179,390 @@ export default function ManageLeadsScreen() {
     void load();
   }, [load]);
 
-  const onConvert = useCallback(async (lead: LeadDTO) => {
-    setConvertingId(lead.id);
-    setConvertError(null);
+  const leads = status.kind === 'ready' ? status.leads : [];
+  const visible = useMemo(() => leads.filter((l) => l.status === tab), [leads, tab]);
+  const selected = leads.find((l) => l.id === selectedId) ?? (isWide ? visible[0] : undefined);
+
+  // Reset the login form whenever a different request is opened.
+  useEffect(() => {
+    setActionError(null);
+    setPassword('');
+    setShowPassword(false);
+    setLoginEmail(selected ? (contactLinks(selected.contact).email ?? '') : '');
+  }, [selected?.id]);
+
+  const replace = (updated: LeadDTO) =>
+    setStatus((s) => (s.kind === 'ready' ? { ...s, leads: s.leads.map((l) => (l.id === updated.id ? updated : l)) } : s));
+
+  const run = useCallback(async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    setActionError(null);
     try {
-      const res = await convertLead(lead.id);
-      setStatus((s) =>
-        s.kind === 'success'
-          ? { ...s, leads: s.leads.map((l) => (l.id === lead.id ? res.lead : l)) }
-          : s,
-      );
-      setClientByLead((m) => ({ ...m, [lead.id]: res.client }));
-      // Prefill the login email with the client contact if it looks like one.
-      setForms((m) => ({
-        ...m,
-        [lead.id]: {
-          ...EMPTY_FORM,
-          email: res.client.contact.includes('@') ? res.client.contact : '',
-        },
-      }));
+      await fn();
     } catch (err) {
-      setConvertError({ id: lead.id, message: messageFor(err) });
+      setActionError(messageFor(err));
     } finally {
-      setConvertingId(null);
+      setBusy(null);
     }
   }, []);
 
-  const updateForm = useCallback((leadId: string, patch: Partial<LoginForm>) => {
-    setForms((m) => ({ ...m, [leadId]: { ...(m[leadId] ?? EMPTY_FORM), ...patch } }));
-  }, []);
+  const onConvert = (lead: LeadDTO) =>
+    run('convert', async () => {
+      const res = await convertLead(lead.id);
+      replace(res.lead);
+      setClients((m) => ({ ...m, [lead.id]: res.client }));
+      setTab('converted');
+      setSelectedId(lead.id);
+    });
 
-  const onCreateLogin = useCallback(
-    async (leadId: string, clientId: string) => {
-      const form = forms[leadId] ?? EMPTY_FORM;
-      updateForm(leadId, { submitting: true, error: null });
-      try {
-        const issued = await createClientLogin(clientId, {
-          email: form.email.trim(),
-          password: form.password,
-        });
-        updateForm(leadId, { submitting: false, issuedEmail: issued.email, error: null });
-      } catch (err) {
-        updateForm(leadId, { submitting: false, error: messageFor(err) });
-      }
-    },
-    [forms, updateForm],
+  const onStatus = (lead: LeadDTO, next: 'new' | 'contacted' | 'lost') =>
+    run(next, async () => {
+      replace(await updateLeadStatus(lead.id, { status: next }));
+      setTab(next);
+      setSelectedId(lead.id);
+    });
+
+  const onCreateLogin = (lead: LeadDTO, clientId: string) =>
+    run('login', async () => {
+      const res = await createClientLogin(clientId, { email: loginEmail.trim(), password });
+      setIssued((m) => ({ ...m, [lead.id]: res.email }));
+    });
+
+  const tabs = (
+    <View accessibilityRole="tablist" style={styles.tabs}>
+      {TABS.map((t) => {
+        const on = t === tab;
+        const n = leads.filter((l) => l.status === t).length;
+        return (
+          <Pressable
+            key={t}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            onPress={() => {
+              setTab(t);
+              setSelectedId(null);
+            }}
+            style={({ hovered, focused }) => [
+              styles.tab,
+              on ? styles.tabOn : hovered && styles.tabHover,
+              focused && styles.focus,
+              webCursor,
+            ]}
+          >
+            <Text style={[styles.tabText, fontFallback.body, on && styles.tabTextOn]}>
+              {c.tabs[t]} · {n}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>{c.heading}</Text>
-        <Text style={styles.subheading}>{c.subheading}</Text>
-
-        {(status.kind === 'idle' || status.kind === 'pending') && (
-          <View style={[styles.card, styles.cardRow]}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.cardBody}>{c.loading}</Text>
-          </View>
-        )}
-
-        {status.kind === 'error' && (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.cardTitle}>{c.errorTitle}</Text>
-            <Text style={styles.cardBody}>{status.message}</Text>
+  const list = (
+    <View style={styles.list}>
+      {visible.length === 0 ? (
+        <EmptyState message={c.empty[tab]} />
+      ) : (
+        visible.map((lead) => {
+          const on = selected?.id === lead.id;
+          return (
             <Pressable
+              key={lead.id}
               accessibilityRole="button"
-              onPress={() => void load()}
-              style={({ focused, pressed }) => [
-                styles.primaryButton,
-                focused && styles.focusRing,
-                pressed && styles.pressed,
-                Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
+              accessibilityState={{ selected: on }}
+              onPress={() => setSelectedId(lead.id)}
+              style={({ hovered, focused }) => [
+                styles.item,
+                on && isWide && styles.itemOn,
+                hovered && !on && styles.itemHover,
+                focused && styles.focus,
+                webCursor,
               ]}
             >
-              <Text style={styles.primaryButtonText}>{c.retry}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {status.kind === 'success' && status.leads.length === 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardBody}>{c.empty}</Text>
-          </View>
-        )}
-
-        {status.kind === 'success' &&
-          status.leads.map((lead) => {
-            const convertible = lead.status === 'new' || lead.status === 'contacted';
-            const client = clientByLead[lead.id];
-            const clientId = client?.id ?? lead.clientId;
-            const form = forms[lead.id] ?? EMPTY_FORM;
-            const showLoginForm = lead.status === 'converted' && !!clientId;
-            return (
-              <View key={lead.id} style={styles.leadCard}>
-                <View style={styles.leadHeader}>
-                  <Text style={styles.leadName}>{lead.name}</Text>
-                  <StatusBadge status={lead.status} />
-                </View>
-                <Text style={styles.leadMeta}>{lead.contact}</Text>
-                <Text style={styles.leadMeta}>
-                  {c.source}: {lead.source}
+              <View style={styles.itemHead}>
+                <Text numberOfLines={1} style={[styles.itemName, fontFallback.body]}>
+                  {lead.name}
                 </Text>
-                {lead.message ? <Text style={styles.leadMessage}>{lead.message}</Text> : null}
+                <Text style={[styles.itemWhen, fontFallback.body]}>{formatAgo(lead.createdAt, lang)}</Text>
+              </View>
+              {lead.message ? (
+                <Text numberOfLines={2} style={[styles.itemMsg, fontFallback.body]}>
+                  «{lead.message}»
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })
+      )}
+    </View>
+  );
 
-                {convertible && (
-                  <>
+  const detail = (lead: LeadDTO) => {
+    const { email, phone } = contactLinks(lead.contact);
+    const clientId = clients[lead.id]?.id ?? lead.clientId;
+    const open = lead.status === 'new' || lead.status === 'contacted';
+    return (
+      <Panel style={styles.detail}>
+        {!isWide && (
+          <IconButton
+            icon={<IconBack color={colors.primarySoft} />}
+            accessibilityLabel={c.back}
+            tone="outline"
+            onPress={() => setSelectedId(null)}
+          />
+        )}
+        <View style={styles.detailHead}>
+          <View style={styles.detailTitle}>
+            <Title size="md">{lead.name}</Title>
+            <Muted size={14}>{c.from(lead.source, formatDayTime(lead.createdAt, lang))}</Muted>
+          </View>
+          <Pill label={c.status[lead.status]} tone={STATUS_TONE[lead.status]} />
+        </View>
+
+        <View style={styles.contactRow}>
+          {email && (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void Linking.openURL(`mailto:${email}`)}
+              style={({ hovered }) => [styles.contact, hovered && { opacity: 0.85 }, webCursor]}
+            >
+              <IconMailOutline size={18} color={colors.textOnPeach} />
+              <Text numberOfLines={1} style={[styles.contactText, fontFallback.body]}>
+                {email}
+              </Text>
+            </Pressable>
+          )}
+          {phone && (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void Linking.openURL(`tel:${phone}`)}
+              style={({ hovered }) => [styles.contact, hovered && { opacity: 0.85 }, webCursor]}
+            >
+              <IconPhoneOutline size={18} color={colors.textOnPeach} />
+              <Text style={[styles.contactText, fontFallback.body]}>
+                {c.call} {phone}
+              </Text>
+            </Pressable>
+          )}
+          {!email && !phone && <Muted>{lead.contact}</Muted>}
+        </View>
+
+        <View style={styles.message}>
+          <Text style={[styles.label, fontFallback.body]}>{c.message}</Text>
+          <Text style={[styles.messageText, fontFallback.body]}>{lead.message || c.noMessage}</Text>
+        </View>
+
+        {open && (
+          <View style={styles.block}>
+            <Text style={[styles.label, fontFallback.body]}>{c.next}</Text>
+            <View style={styles.actions}>
+              <Button
+                label={c.convert}
+                loading={busy === 'convert'}
+                disabled={!!busy}
+                onPress={() => void onConvert(lead)}
+                icon={<IconCheckMark size={18} color={colors.text} />}
+              />
+              {lead.status === 'new' && (
+                <Button
+                  label={c.contacted}
+                  variant="secondary"
+                  loading={busy === 'contacted'}
+                  disabled={!!busy}
+                  onPress={() => void onStatus(lead, 'contacted')}
+                />
+              )}
+              <Button
+                label={c.archive}
+                variant="quiet"
+                loading={busy === 'lost'}
+                disabled={!!busy}
+                onPress={() => void onStatus(lead, 'lost')}
+                icon={<IconArchive size={18} color={colors.textMuted} />}
+              />
+            </View>
+            <Muted size={14}>{c.convertHint}</Muted>
+          </View>
+        )}
+
+        {lead.status === 'lost' && (
+          <Button
+            label={c.restore}
+            variant="secondary"
+            loading={busy === 'new'}
+            onPress={() => void onStatus(lead, 'new')}
+          />
+        )}
+
+        {lead.status === 'converted' && clientId && (
+          <View style={styles.block}>
+            <Text style={[styles.label, fontFallback.body]}>{c.login}</Text>
+            {issued[lead.id] ? (
+              <Notice tone="success">{c.issued(issued[lead.id])}</Notice>
+            ) : (
+              <>
+                <Muted size={14}>{c.loginHelp}</Muted>
+                <TextInput
+                  value={loginEmail}
+                  onChangeText={setLoginEmail}
+                  placeholder={c.loginEmail}
+                  placeholderTextColor={colors.placeholder}
+                  accessibilityLabel={c.loginEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  inputMode="email"
+                  autoComplete="off"
+                  style={[styles.input, fontFallback.body]}
+                />
+                <View style={styles.passwordRow}>
+                  <View style={styles.passwordWrap}>
+                    <TextInput
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder={c.password}
+                      placeholderTextColor={colors.placeholder}
+                      accessibilityLabel={c.password}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoComplete="new-password"
+                      textContentType="newPassword"
+                      style={[styles.input, styles.passwordInput, fontFallback.body]}
+                    />
                     <Pressable
                       accessibilityRole="button"
-                      disabled={convertingId === lead.id}
-                      onPress={() => void onConvert(lead)}
-                      style={({ focused, pressed }) => [
-                        styles.primaryButton,
-                        focused && styles.focusRing,
-                        pressed && styles.pressed,
-                        convertingId === lead.id && styles.blocked,
-                        Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-                      ]}
+                      accessibilityLabel={showPassword ? c.hide : c.show}
+                      onPress={() => setShowPassword((v) => !v)}
+                      style={[styles.eye, webCursor]}
                     >
-                      <Text style={styles.primaryButtonText}>
-                        {convertingId === lead.id ? c.converting : c.convert}
-                      </Text>
+                      {showPassword ? <IconEyeOff color={colors.textMuted} /> : <IconEye color={colors.textMuted} />}
                     </Pressable>
-                    {convertError?.id === lead.id && (
-                      <Text style={styles.errorText}>{convertError.message}</Text>
-                    )}
-                  </>
-                )}
-
-                {showLoginForm && (
-                  <View style={styles.loginBlock}>
-                    {client && <Text style={styles.convertedText}>{c.convertedTo(client.name)}</Text>}
-                    {form.issuedEmail ? (
-                      <Text style={styles.issuedText}>{c.loginIssued(form.issuedEmail)}</Text>
-                    ) : (
-                      <>
-                        <Text style={styles.label}>{c.email}</Text>
-                        <TextInput
-                          value={form.email}
-                          onChangeText={(v) => updateForm(lead.id, { email: v })}
-                          autoCapitalize="none"
-                          keyboardType="email-address"
-                          inputMode="email"
-                          accessibilityLabel={c.email}
-                          style={styles.input}
-                          placeholderTextColor={colors.textMuted}
-                        />
-                        <Text style={styles.label}>{c.password}</Text>
-                        <TextInput
-                          value={form.password}
-                          onChangeText={(v) => updateForm(lead.id, { password: v })}
-                          secureTextEntry
-                          autoCapitalize="none"
-                          accessibilityLabel={c.password}
-                          style={styles.input}
-                          placeholderTextColor={colors.textMuted}
-                        />
-                        <Pressable
-                          accessibilityRole="button"
-                          disabled={form.submitting}
-                          onPress={() => clientId && void onCreateLogin(lead.id, clientId)}
-                          style={({ focused, pressed }) => [
-                            styles.primaryButton,
-                            focused && styles.focusRing,
-                            pressed && styles.pressed,
-                            form.submitting && styles.blocked,
-                            Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-                          ]}
-                        >
-                          <Text style={styles.primaryButtonText}>
-                            {form.submitting ? c.creating : c.createLogin}
-                          </Text>
-                        </Pressable>
-                        {form.error && <Text style={styles.errorText}>{form.error}</Text>}
-                      </>
-                    )}
                   </View>
-                )}
-              </View>
-            );
-          })}
-      </ScrollView>
-    </SafeAreaView>
+                  <Button
+                    label={c.generate}
+                    variant="secondary"
+                    onPress={() => {
+                      setPassword(generatePassword());
+                      setShowPassword(true);
+                    }}
+                  />
+                </View>
+                <Button
+                  label={c.createLogin}
+                  variant="green"
+                  loading={busy === 'login'}
+                  disabled={!!busy || loginEmail.trim() === '' || password.length < 8}
+                  onPress={() => void onCreateLogin(lead, clientId)}
+                />
+              </>
+            )}
+          </View>
+        )}
+
+        {actionError && <Notice tone="error">{actionError}</Notice>}
+      </Panel>
+    );
+  };
+
+  return (
+    <Screen maxWidth={1100}>
+      <View style={styles.header}>
+        <Title>{c.title}</Title>
+        <Muted size={16}>{c.subtitle}</Muted>
+      </View>
+
+      {status.kind === 'loading' && <LoadingState label={c.loading} />}
+      {status.kind === 'error' && (
+        <ErrorState title={c.errorTitle} message={status.message} retryLabel={c.retry} onRetry={() => void load()} />
+      )}
+      {status.kind === 'ready' &&
+        (isWide ? (
+          <>
+            {tabs}
+            <View style={styles.split}>
+              <View style={styles.listCol}>{list}</View>
+              <View style={styles.detailCol}>{selected ? detail(selected) : <EmptyState message={c.pick} />}</View>
+            </View>
+          </>
+        ) : selected ? (
+          detail(selected)
+        ) : (
+          <>
+            {tabs}
+            {list}
+          </>
+        ))}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    padding: space.md,
-    gap: space.sm,
-    maxWidth: layout.maxProse,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  heading: { ...t.h2, ...fontFallback.display, color: colors.text },
-  subheading: { ...t.body, ...fontFallback.body, color: colors.textMuted, marginTop: -space.xs },
-  card: {
+  header: { gap: 6 },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tab: {
+    minHeight: 40,
+    paddingHorizontal: 16,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
+    justifyContent: 'center',
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  cardError: { backgroundColor: '#FBEAEA', borderColor: '#E4B7B7' },
-  cardTitle: { ...t.h3, ...fontFallback.display, color: colors.text },
-  cardBody: { ...t.body, ...fontFallback.body, color: colors.textMuted },
-  leadCard: {
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
-  },
-  leadHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.xs },
-  leadName: { ...t.h3, ...fontFallback.display, color: colors.text, flexShrink: 1 },
-  leadMeta: { ...t.caption, ...fontFallback.body, color: colors.textMuted },
-  leadMessage: { ...t.body, ...fontFallback.body, color: colors.text, marginTop: space.xs },
-  loginBlock: {
-    marginTop: space.xs,
-    paddingTop: space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+  tabOn: { backgroundColor: colors.text, borderColor: colors.text },
+  tabHover: { backgroundColor: colors.bgAlt },
+  tabText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.text },
+  tabTextOn: { fontFamily: fonts.bodyBold, color: colors.onDark },
+  focus: { outlineColor: colors.accent, outlineWidth: 2, outlineStyle: 'solid' } as object,
+  split: { flexDirection: 'row', gap: 20, alignItems: 'flex-start' },
+  listCol: { flex: 1, minWidth: 260, maxWidth: 380 },
+  detailCol: { flex: 2, minWidth: 0 },
+  list: { gap: 10 },
+  item: {
     gap: 6,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
   },
-  convertedText: { ...t.body, ...fontFallback.body, color: colors.primary },
-  issuedText: { ...t.body, ...fontFallback.body, color: colors.primary },
-  label: { ...t.caption, ...fontFallback.body, color: colors.text, marginTop: space.xs },
+  itemOn: { borderColor: colors.primary, borderWidth: 2 },
+  itemHover: { backgroundColor: '#FFFDF8' },
+  itemHead: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  itemName: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  itemWhen: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted },
+  itemMsg: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.textMuted },
+  detail: { gap: 18, padding: 22 },
+  detailHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  detailTitle: { flex: 1, minWidth: 200, gap: 4 },
+  contactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  contact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.bgAlt,
+    maxWidth: '100%',
+  },
+  contactText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textOnPeach, flexShrink: 1 },
+  message: { gap: 6, padding: 16, borderRadius: 16, backgroundColor: colors.bg, borderWidth: 1, borderColor: '#F3ECDF' },
+  label: { fontFamily: fonts.bodyBold, fontSize: 12.5, letterSpacing: 1, textTransform: 'uppercase', color: colors.textMuted },
+  messageText: { fontFamily: fonts.body, fontSize: 16, lineHeight: 24, color: colors.text },
+  block: { gap: 10 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   input: {
-    ...t.body,
-    ...fontFallback.body,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
+    fontFamily: fonts.body,
+    fontSize: 16,
     color: colors.text,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.base,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    ...Platform.select({ web: { outlineColor: colors.accent } as object, default: {} }),
   },
-  errorText: { ...t.body, ...fontFallback.body, color: '#B00020', marginTop: space.xs },
-  primaryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
-    borderRadius: radii.base,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginTop: space.xs,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  primaryButtonText: { ...t.body, ...fontFallback.body, color: colors.bg },
-  focusRing: { borderColor: colors.accent },
-  pressed: { opacity: 0.85 },
-  blocked: { opacity: 0.6 },
+  passwordRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  passwordWrap: { flex: 1, justifyContent: 'center' },
+  passwordInput: { paddingRight: 50 },
+  eye: { position: 'absolute', right: 2, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

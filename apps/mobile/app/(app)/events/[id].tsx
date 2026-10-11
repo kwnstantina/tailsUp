@@ -1,34 +1,26 @@
 // =============================================================================
-// Post-session event detail + video upload + playback (Phase 2, Unit C —
-// FR-M3/M4 / AC-9 ; G-7 USER OVERRIDE: presigned-GET playback)
+// Event detail — note, tags, video (Phase 2 — FR-M3/M4 / AC-9 ; G-7 playback)
 //
-// - Load GET /events/:id -> show the four tap fields READ-ONLY (the moat), edit
-//   `note` (multiline) + `tags` (add/remove chips), persist via PATCH /events/:id.
-// - Pick a video (expo-image-picker, mediaTypes:['videos']), validate the mime
-//   against the G-6 allow-set, soft-warn >200MB, then run the presign -> direct
-//   PUT -> POST /events/:id/media flow (lib/upload.ts) and refetch so it shows.
-// - Play an attached media item: GET /media/:id/url -> render an expo-video
-//   <VideoView> with the short-lived presigned URL (re-request on expiry).
+// - GET /events/:id → the logged fields READ-ONLY (the moat), shown as a
+//   summary card in plain words; `note` and `tags` are editable and saved via
+//   PATCH /events/:id.
+// - Video: pick (expo-image-picker, mediaTypes:['videos']), validate the mime
+//   against the G-6 allow-set, soft-warn >200MB, then presign → direct PUT →
+//   POST /events/:id/media (lib/upload.ts) and refetch so it shows.
+// - Playback: GET /media/:id/url → an expo-video <VideoView> with the
+//   short-lived presigned URL.
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
-import type { BehaviorEventWithMediaDTO, MediaDTO } from '@tailsup/shared';
+import type { BehaviorEventWithMediaDTO, MediaDTO, Outcome } from '@tailsup/shared';
+import { colors, fontFallback, fonts, radii } from '../../../lib/theme';
+import { useLang } from '../../../lib/i18n';
 import { ApiError, getEvent, getMediaPlaybackUrl, patchEvent } from '../../../lib/api';
+import { OUTCOME_LABELS, formatDay, formatTime, intensityWord, triggerLabel } from '../../../lib/labels';
 import {
   ALLOWED_VIDEO_TYPES,
   SOFT_SIZE_WARN_BYTES,
@@ -36,26 +28,128 @@ import {
   uploadVideo,
   type PickedVideo,
 } from '../../../lib/upload';
+import {
+  Button,
+  ErrorState,
+  IconButton,
+  LoadingState,
+  Muted,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  SectionHeader,
+  Title,
+  type PillTone,
+} from '../../../components/app/AppKit';
+import { IconBack, IconPlus, IconVideo } from '../../../components/app/AppIcons';
+
+const copy = {
+  el: {
+    back: 'Πίσω',
+    title: 'Καταγραφή',
+    loading: 'Φόρτωση…',
+    errorTitle: 'Δεν ήταν δυνατή η φόρτωση',
+    retry: 'Δοκίμασε ξανά',
+    trigger: 'Ερέθισμα',
+    distance: 'Απόσταση',
+    intensity: 'Ένταση',
+    intervention: 'Παρέμβαση',
+    note: 'Σημείωση',
+    notePlaceholder: 'Τι παρατηρήσατε; π.χ. κοντά στην πύλη του πάρκου',
+    tags: 'Ετικέτες',
+    noTags: 'Καμία ετικέτα ακόμα.',
+    tagPlaceholder: 'Νέα ετικέτα',
+    add: 'Προσθήκη',
+    remove: (t: string) => `Αφαίρεση ετικέτας ${t}`,
+    save: 'Αποθήκευση',
+    saved: '✓ Αποθηκεύτηκε.',
+    video: 'Βίντεο',
+    noVideo: 'Δεν υπάρχει βίντεο ακόμα.',
+    upload: 'Προσθήκη βίντεο',
+    uploading: 'Ανέβασμα…',
+    play: 'Αναπαραγωγή',
+    loadingVideo: 'Φόρτωση βίντεο…',
+    permission: 'Δεν δόθηκε άδεια πρόσβασης στα βίντεο.',
+    unsupported: (t: string | null) =>
+      `Μη υποστηριζόμενη μορφή${t ? ` (${t})` : ''}. Επιτρέπονται: ${ALLOWED_VIDEO_TYPES.join(', ')}.`,
+    largeTitle: 'Μεγάλο βίντεο',
+    largeBody: 'Το βίντεο ξεπερνά τα 200 MB και μπορεί να αργήσει να ανέβει από δίκτυο κινητού.',
+    playbackFailed: 'Δεν φορτώθηκε το βίντεο. Δοκιμάστε ξανά.',
+    uploadFailed: 'Το ανέβασμα απέτυχε.',
+  },
+  en: {
+    back: 'Back',
+    title: 'Logged event',
+    loading: 'Loading…',
+    errorTitle: 'Could not load',
+    retry: 'Try again',
+    trigger: 'Trigger',
+    distance: 'Distance',
+    intensity: 'Intensity',
+    intervention: 'Intervention',
+    note: 'Note',
+    notePlaceholder: 'What did you notice? e.g. near the park gate',
+    tags: 'Tags',
+    noTags: 'No tags yet.',
+    tagPlaceholder: 'New tag',
+    add: 'Add',
+    remove: (t: string) => `Remove tag ${t}`,
+    save: 'Save',
+    saved: '✓ Saved.',
+    video: 'Video',
+    noVideo: 'No video yet.',
+    upload: 'Add a video',
+    uploading: 'Uploading…',
+    play: 'Play',
+    loadingVideo: 'Loading video…',
+    permission: 'Media library permission denied.',
+    unsupported: (t: string | null) => `Unsupported type${t ? ` (${t})` : ''}. Allowed: ${ALLOWED_VIDEO_TYPES.join(', ')}.`,
+    largeTitle: 'Large video',
+    largeBody: 'This video is over 200 MB and may take a while to upload on a phone network.',
+    playbackFailed: 'Could not load the video. Please try again.',
+    uploadFailed: 'Upload failed.',
+  },
+} as const;
+
+const OUTCOME_TONE: Record<Outcome, PillTone> = {
+  disengaged: 'mint',
+  recovered_slowly: 'peach',
+  over_threshold: 'coral',
+};
 
 type Status =
   | { kind: 'loading' }
   | { kind: 'success'; event: BehaviorEventWithMediaDTO }
   | { kind: 'error'; message: string };
 
-type Upload =
-  | { kind: 'idle' }
-  | { kind: 'uploading'; progress: number }
-  | { kind: 'error'; message: string };
+type Upload = { kind: 'idle' } | { kind: 'uploading'; progress: number } | { kind: 'error'; message: string };
+
+const webCursor = Platform.select({ web: { cursor: 'pointer' } as object, default: {} });
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.fact}>
+      <Text style={[styles.factLabel, fontFallback.body]}>{label}</Text>
+      <Text style={[styles.factValue, fontFallback.body]}>{value}</Text>
+    </View>
+  );
+}
 
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { lang } = useLang();
+  const c = copy[lang];
 
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
   const [note, setNote] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<{ kind: 'idle' } | { kind: 'saved' } | { kind: 'error'; message: string }>({
+    kind: 'idle',
+  });
   const [upload, setUpload] = useState<Upload>({ kind: 'idle' });
   const [playingMediaId, setPlayingMediaId] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
@@ -68,10 +162,7 @@ export default function EventDetailScreen() {
       setNote(event.note ?? '');
       setTags(event.tags ?? []);
     } catch (err) {
-      setStatus({
-        kind: 'error',
-        message: err instanceof ApiError ? err.message : 'Could not load the event.',
-      });
+      setStatus({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) });
     }
   }, [id]);
 
@@ -79,21 +170,18 @@ export default function EventDetailScreen() {
     void load();
   }, [load]);
 
-  // ── note/tags persistence ──────────────────────────────────────────────────
   const onSave = useCallback(async () => {
     setSaving(true);
-    setSaveError(null);
+    setSaveState({ kind: 'idle' });
     try {
       const updated = await patchEvent(id, {
         note: note.trim() === '' ? null : note,
         tags: tags.length === 0 ? null : tags,
       });
-      // Reflect the saved server state into the loaded event.
-      setStatus((s) =>
-        s.kind === 'success' ? { kind: 'success', event: { ...s.event, ...updated } } : s,
-      );
+      setStatus((s) => (s.kind === 'success' ? { kind: 'success', event: { ...s.event, ...updated } } : s));
+      setSaveState({ kind: 'saved' });
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : 'Could not save changes.');
+      setSaveState({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) });
     } finally {
       setSaving(false);
     }
@@ -106,252 +194,204 @@ export default function EventDetailScreen() {
     setTagDraft('');
   }, [tagDraft]);
 
-  const removeTag = useCallback((t: string) => {
-    setTags((prev) => prev.filter((x) => x !== t));
-  }, []);
-
-  // ── pick + upload video ─────────────────────────────────────────────────────
   const onPickAndUpload = useCallback(async () => {
     setUpload({ kind: 'idle' });
-
-    // Permission (no-op on web).
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setUpload({ kind: 'error', message: 'Media library permission denied.' });
+      setUpload({ kind: 'error', message: c.permission });
       return;
     }
-
     // SDK 54: mediaTypes is a STRING ARRAY (['videos']), not MediaTypeOptions.
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['videos'],
-      quality: 1,
-    });
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 1 });
     if (picked.canceled || picked.assets.length === 0) return;
 
     const asset = picked.assets[0];
     const mimeType = asset.mimeType ?? null;
-
-    // Validate against the G-6 allow-set BEFORE presigning (R-6 thread starts here).
+    // Validate against the G-6 allow-set BEFORE presigning.
     if (!isAllowedVideoType(mimeType)) {
-      setUpload({
-        kind: 'error',
-        message: `Unsupported type${mimeType ? ` (${mimeType})` : ''}. Allowed: ${ALLOWED_VIDEO_TYPES.join(', ')}.`,
-      });
+      setUpload({ kind: 'error', message: c.unsupported(mimeType) });
       return;
     }
-
     // Soft-warn above 200 MB (G-6) — do not block.
     if (asset.fileSize != null && asset.fileSize > SOFT_SIZE_WARN_BYTES && Platform.OS !== 'web') {
-      Alert.alert(
-        'Large video',
-        'This video is over 200 MB and may take a while to upload on a phone network.',
-      );
+      Alert.alert(c.largeTitle, c.largeBody);
     }
-
     const pickedVideo: PickedVideo = {
       uri: asset.uri,
       contentType: mimeType,
       file: (asset as { file?: Blob | null }).file ?? null,
     };
-
     setUpload({ kind: 'uploading', progress: 0 });
     try {
-      await uploadVideo(id, pickedVideo, (fraction) =>
-        setUpload({ kind: 'uploading', progress: fraction }),
-      );
+      await uploadVideo(id, pickedVideo, (fraction) => setUpload({ kind: 'uploading', progress: fraction }));
       setUpload({ kind: 'idle' });
-      await load(); // refetch so the new media shows (FR-M4)
+      await load();
     } catch (err) {
-      setUpload({
-        kind: 'error',
-        message: err instanceof ApiError ? err.message : 'Upload failed.',
-      });
+      setUpload({ kind: 'error', message: err instanceof ApiError ? err.message : c.uploadFailed });
     }
-  }, [id, load]);
+  }, [id, load, c]);
 
-  // ── playback (G-7 override) ─────────────────────────────────────────────────
-  const onPlay = useCallback(async (media: MediaDTO) => {
-    setPlayingMediaId(media.id);
-    setPlaybackUrl(null);
-    try {
-      const { url } = await getMediaPlaybackUrl(media.id);
-      setPlaybackUrl(url);
-    } catch {
-      setPlayingMediaId(null);
-      Alert.alert('Playback', 'Could not load the video URL. Please try again.');
-    }
-  }, []);
+  const onPlay = useCallback(
+    async (media: MediaDTO) => {
+      setPlayingMediaId(media.id);
+      setPlaybackUrl(null);
+      try {
+        const { url } = await getMediaPlaybackUrl(media.id);
+        setPlaybackUrl(url);
+      } catch {
+        setPlayingMediaId(null);
+        Alert.alert(c.video, c.playbackFailed);
+      }
+    },
+    [c],
+  );
+
+  const back = (
+    <IconButton
+      icon={<IconBack color={colors.primarySoft} />}
+      accessibilityLabel={c.back}
+      tone="outline"
+      onPress={() => (router.canGoBack() ? router.back() : router.replace('/dogs'))}
+    />
+  );
+
+  if (status.kind === 'loading') {
+    return (
+      <Screen maxWidth={640}>
+        {back}
+        <LoadingState label={c.loading} />
+      </Screen>
+    );
+  }
+  if (status.kind === 'error') {
+    return (
+      <Screen maxWidth={640}>
+        {back}
+        <ErrorState title={c.errorTitle} message={status.message} retryLabel={c.retry} onRetry={() => void load()} />
+      </Screen>
+    );
+  }
+
+  const e = status.event;
+  const unit = lang === 'el' ? 'μέτρα' : 'metres';
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {status.kind === 'loading' && (
-          <View style={[styles.card, styles.cardNeutral]}>
-            <ActivityIndicator color="#2563eb" />
-            <Text style={styles.cardTitle}>Loading event…</Text>
-          </View>
-        )}
+    <Screen maxWidth={640}>
+      <View style={styles.header}>
+        {back}
+        <View style={styles.headerText}>
+          <Title>{c.title}</Title>
+          <Muted>
+            {formatDay(e.occurredAt, lang)} · {formatTime(e.occurredAt, lang)}
+          </Muted>
+        </View>
+      </View>
 
-        {status.kind === 'error' && (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.cardTitle}>✕ Could not load event</Text>
-            <Text style={styles.cardBody}>{status.message}</Text>
+      <Panel style={styles.summary}>
+        <Pill label={OUTCOME_LABELS[lang][e.outcome]} tone={OUTCOME_TONE[e.outcome]} />
+        <View style={styles.facts}>
+          <Fact label={c.trigger} value={triggerLabel(e.triggerType, e.triggerDetail, lang)} />
+          <Fact label={c.distance} value={`${e.thresholdMeters} ${unit}`} />
+          <Fact label={c.intensity} value={`${e.intensity}/10 · ${intensityWord(e.intensity, lang)}`} />
+          <Fact label={c.intervention} value={e.intervention} />
+        </View>
+      </Panel>
+
+      <View style={styles.section}>
+        <SectionHeader title={c.note} />
+        <TextInput
+          style={[styles.input, styles.noteInput, fontFallback.body]}
+          multiline
+          placeholder={c.notePlaceholder}
+          placeholderTextColor={colors.placeholder}
+          accessibilityLabel={c.note}
+          value={note}
+          onChangeText={setNote}
+          editable={!saving}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title={c.tags} />
+        <View style={styles.tagRow}>
+          {tags.length === 0 && <Muted>{c.noTags}</Muted>}
+          {tags.map((t) => (
             <Pressable
+              key={t}
               accessibilityRole="button"
-              onPress={() => void load()}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              accessibilityLabel={c.remove(t)}
+              onPress={() => setTags((prev) => prev.filter((x) => x !== t))}
+              style={({ hovered }) => [styles.tag, hovered && { backgroundColor: colors.mint }, webCursor]}
             >
-              <Text style={styles.primaryButtonText}>Retry</Text>
+              <Text style={[styles.tagText, fontFallback.body]}>{t}  ✕</Text>
             </Pressable>
-          </View>
-        )}
+          ))}
+        </View>
+        <View style={styles.tagAdd}>
+          <TextInput
+            style={[styles.input, styles.tagInput, fontFallback.body]}
+            placeholder={c.tagPlaceholder}
+            placeholderTextColor={colors.placeholder}
+            accessibilityLabel={c.tagPlaceholder}
+            value={tagDraft}
+            onChangeText={setTagDraft}
+            onSubmitEditing={addTag}
+            autoCapitalize="none"
+            editable={!saving}
+          />
+          <Button label={c.add} variant="secondary" onPress={addTag} icon={<IconPlus size={16} color={colors.primarySoft} />} />
+        </View>
+      </View>
 
-        {status.kind === 'success' && (
-          <>
-            <Text style={styles.heading}>Event detail</Text>
+      <View style={styles.saveRow}>
+        <Button label={c.save} variant="green" loading={saving} onPress={() => void onSave()} />
+        {saveState.kind === 'saved' && <Muted>{c.saved}</Muted>}
+      </View>
+      {saveState.kind === 'error' && <Notice tone="error">{saveState.message}</Notice>}
 
-            {/* Read-only tap fields (the moat — not editable here, AC-4) */}
-            <View style={styles.readonlyCard}>
-              <ReadonlyRow label="Trigger" value={status.event.triggerType} />
-              <ReadonlyRow label="Intensity" value={`${status.event.intensity}/10`} />
-              <ReadonlyRow label="Threshold" value={`${status.event.thresholdMeters} m`} />
-              <ReadonlyRow label="Outcome" value={status.event.outcome.replace(/_/g, ' ')} />
-              <ReadonlyRow label="Intervention" value={status.event.intervention} />
-              <ReadonlyRow label="When" value={formatDateTime(status.event.occurredAt)} />
-            </View>
-
-            {/* Editable note */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Note</Text>
-              <TextInput
-                style={styles.noteInput}
-                multiline
-                placeholder="Add a note about this event…"
-                value={note}
-                onChangeText={setNote}
-                editable={!saving}
-              />
-            </View>
-
-            {/* Editable tags */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Tags</Text>
-              <View style={styles.tagRow}>
-                {tags.length === 0 && <Text style={styles.muted}>No tags yet.</Text>}
-                {tags.map((t) => (
-                  <Pressable
-                    key={t}
-                    accessibilityRole="button"
-                    onPress={() => removeTag(t)}
-                    style={({ pressed }) => [styles.tag, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.tagText}>{t} ✕</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <View style={styles.tagAddRow}>
-                <TextInput
-                  style={[styles.input, styles.tagInput]}
-                  placeholder="Add a tag"
-                  value={tagDraft}
-                  onChangeText={setTagDraft}
-                  onSubmitEditing={addTag}
-                  autoCapitalize="none"
-                  editable={!saving}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={addTag}
-                  style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
-                >
-                  <Text style={styles.addTagButtonText}>Add</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={saving}
-              onPress={() => void onSave()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                saving && styles.disabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : 'Save note & tags'}</Text>
-            </Pressable>
-            {saveError && <Text style={styles.errorText}>{saveError}</Text>}
-
-            {/* ── Media ────────────────────────────────────────────────────── */}
-            <Text style={styles.sectionTitle}>Media</Text>
-
-            {status.event.media.length === 0 && (
-              <Text style={styles.muted}>No media attached yet.</Text>
-            )}
-
-            {status.event.media.map((m) => (
-              <View key={m.id} style={styles.mediaCard}>
-                <View style={styles.mediaHeader}>
-                  <Text style={styles.mediaTitle}>{m.type}</Text>
-                  <Text style={styles.mediaMeta}>{formatDateTime(m.uploadedAt)}</Text>
-                </View>
-                <Text style={styles.mediaKey} numberOfLines={1}>
-                  {filenameFromBlobUrl(m.blobUrl)}
-                </Text>
-
-                {playingMediaId === m.id ? (
-                  playbackUrl ? (
-                    <VideoPlayerView url={playbackUrl} />
-                  ) : (
-                    <View style={styles.playerLoading}>
-                      <ActivityIndicator color="#2563eb" />
-                      <Text style={styles.muted}>Loading video…</Text>
-                    </View>
-                  )
-                ) : (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => void onPlay(m)}
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-                  >
-                    <Text style={styles.secondaryButtonText}>▶ Play</Text>
-                  </Pressable>
-                )}
-              </View>
-            ))}
-
-            {/* Upload */}
-            <Pressable
-              accessibilityRole="button"
-              disabled={upload.kind === 'uploading'}
-              onPress={() => void onPickAndUpload()}
-              style={({ pressed }) => [
-                styles.uploadButton,
-                upload.kind === 'uploading' && styles.disabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.uploadButtonText}>
-                {upload.kind === 'uploading' ? 'Uploading…' : '＋ Pick & upload video'}
+      <View style={styles.section}>
+        <SectionHeader title={c.video} />
+        {e.media.length === 0 && <Muted>{c.noVideo}</Muted>}
+        {e.media.map((m) => (
+          <Panel key={m.id} style={styles.media}>
+            <View style={styles.mediaHead}>
+              <IconVideo color={colors.primary} />
+              <Text style={[styles.mediaTitle, fontFallback.body]}>
+                {formatDay(m.uploadedAt, lang)} · {formatTime(m.uploadedAt, lang)}
               </Text>
-            </Pressable>
-
-            {upload.kind === 'uploading' && (
-              <View style={styles.progressWrap}>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[styles.progressFill, { width: `${Math.round(upload.progress * 100)}%` }]}
-                  />
+            </View>
+            {playingMediaId === m.id ? (
+              playbackUrl ? (
+                <VideoPlayerView url={playbackUrl} />
+              ) : (
+                <View style={styles.playerLoading}>
+                  <ActivityIndicator color={colors.primary} />
+                  <Muted>{c.loadingVideo}</Muted>
                 </View>
-                <Text style={styles.muted}>{Math.round(upload.progress * 100)}%</Text>
-              </View>
+              )
+            ) : (
+              <Button label={`▶  ${c.play}`} variant="secondary" onPress={() => void onPlay(m)} />
             )}
-            {upload.kind === 'error' && <Text style={styles.errorText}>{upload.message}</Text>}
-          </>
+          </Panel>
+        ))}
+        <Button
+          label={upload.kind === 'uploading' ? c.uploading : c.upload}
+          variant="secondary"
+          disabled={upload.kind === 'uploading'}
+          onPress={() => void onPickAndUpload()}
+          icon={<IconVideo size={18} color={colors.primarySoft} />}
+        />
+        {upload.kind === 'uploading' && (
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.round(upload.progress * 100)}%` }]} />
+            </View>
+            <Muted>{Math.round(upload.progress * 100)}%</Muted>
+          </View>
         )}
-      </ScrollView>
-    </SafeAreaView>
+        {upload.kind === 'error' && <Notice tone="error">{upload.message}</Notice>}
+      </View>
+    </Screen>
   );
 }
 
@@ -364,153 +404,39 @@ function VideoPlayerView({ url }: { url: string }) {
   return <VideoView player={player} style={styles.video} allowsFullscreen contentFit="contain" />;
 }
 
-function ReadonlyRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.roRow}>
-      <Text style={styles.roLabel}>{label}</Text>
-      <Text style={styles.roValue}>{value}</Text>
-    </View>
-  );
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-
-function filenameFromBlobUrl(blobUrl: string): string {
-  const parts = blobUrl.split('/');
-  return parts[parts.length - 1] || blobUrl;
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' },
-  container: {
-    padding: 20,
-    gap: 14,
-    maxWidth: 560,
-    width: '100%',
-    alignSelf: 'center',
-    ...Platform.select({ web: { minHeight: '100%' as unknown as number }, default: {} }),
-  },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
-  card: { borderRadius: 12, padding: 16, borderWidth: 1, gap: 8 },
-  cardNeutral: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  cardError: { backgroundColor: '#fef2f2', borderColor: '#fca5a5' },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  cardBody: { fontSize: 14, color: '#334155' },
-  readonlyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 14,
-    gap: 6,
-  },
-  roRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  roLabel: { fontSize: 14, color: '#64748b', fontWeight: '600' },
-  roValue: { fontSize: 14, color: '#0f172a', textTransform: 'capitalize' },
-  field: { gap: 8 },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  noteInput: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    color: '#0f172a',
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  headerText: { flex: 1, gap: 2 },
+  summary: { gap: 14 },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 14 },
+  fact: { width: '50%', gap: 2, paddingRight: 12 },
+  factLabel: { fontFamily: fonts.bodyBold, fontSize: 12.5, letterSpacing: 0.8, textTransform: 'uppercase', color: colors.textMuted },
+  factValue: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  section: { gap: 10 },
   input: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: '#0f172a',
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
+    fontFamily: fonts.body,
+    fontSize: 16,
+    color: colors.text,
   },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  tag: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  tagText: { fontSize: 13, color: '#1d4ed8', fontWeight: '600' },
-  tagAddRow: { flexDirection: 'row', gap: 8 },
+  noteInput: { minHeight: 110, paddingTop: 12, textAlignVertical: 'top' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { borderRadius: radii.pill, backgroundColor: colors.mintSoft, paddingHorizontal: 12, paddingVertical: 8, minHeight: 36 },
+  tagText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.textOnMint },
+  tagAdd: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   tagInput: { flex: 1 },
-  addTagButton: {
-    backgroundColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  addTagButtonText: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
-  primaryButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  secondaryButton: {
-    backgroundColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginTop: 8 },
-  muted: { fontSize: 13, color: '#94a3b8' },
-  mediaCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 14,
-    gap: 8,
-  },
-  mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  mediaTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', textTransform: 'capitalize' },
-  mediaMeta: { fontSize: 12, color: '#64748b' },
-  mediaKey: { fontSize: 12, color: '#475569' },
-  video: { width: '100%', height: 200, borderRadius: 10, backgroundColor: '#000000' },
+  saveRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  media: { gap: 12 },
+  mediaHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mediaTitle: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.text },
   playerLoading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  uploadButton: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  uploadButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
-  progressWrap: { gap: 6 },
-  progressTrack: {
-    height: 8,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 8, backgroundColor: '#16a34a' },
-  errorText: { fontSize: 14, color: '#991b1b' },
-  disabled: { opacity: 0.6 },
-  pressed: { opacity: 0.85 },
+  video: { width: '100%', aspectRatio: 16 / 9, borderRadius: 14, backgroundColor: '#000' },
+  progressWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  progressTrack: { flex: 1, height: 10, borderRadius: radii.pill, backgroundColor: '#F3ECDF', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: radii.pill },
 });

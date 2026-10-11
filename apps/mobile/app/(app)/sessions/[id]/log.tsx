@@ -1,359 +1,586 @@
 // =============================================================================
-// 4-tap quick-logging screen (Phase 2, Unit C — FR-M1/M2 / NFR-1 / AC-8)
+// Session logging — the trainer's in-the-field screen (FR-M1/M2 / NFR-1).
 //
-// The trainer's core day-to-day surface: log a behavior event in <= 4 deliberate
-// taps + submit, then immediately be ready for the next capture. Speed is the
-// whole point (NFR-1), so:
-//   - All FOUR fields are PRE-DEFAULTED (an unchanged field needs no tap).
-//   - Large tap targets, no typing, no scrolling between picking and submitting,
-//     no blocking dialogs.
-//   - Submit posts POST /sessions/:id/events OMITTING `intervention` (the server
-//     defaults it from the dog's protocol).
-//   - On 201: optimistic reset to defaults + a lightweight inline confirmation.
-//   - On failure: surface the error and RETRY WITHOUT losing selections (R-5).
-//     A 400 "no protocol default" case offers a one-time intervention entry
-//     instead of baking a 5th tap into the common path (OQ-8).
+// Speed is still the whole point: every field is pre-defaulted, so an
+// unchanged field costs no tap, and the Log button sits fixed at the bottom
+// within thumb reach. The screen runs in focus mode (no app chrome) and draws
+// its own header with the dog's name and how many events this session holds.
+//
+//   - Trigger: five big buttons. "Άλλο" opens a short text field for what it
+//     actually was (sent as `triggerDetail`, ≤ 100 chars).
+//   - Distance: a −/+ stepper — 1 m steps up close, 5 m steps beyond 10 m.
+//   - Intensity: a 1–10 bar with the level in words.
+//   - Outcome: three buttons, worded as what the dog did.
+//   - Intervention: defaults from the dog's protocol (server-side); "Αλλαγή"
+//     lets the trainer type a different one for this event.
+//
+// After a save the fields reset for the next capture. On failure the
+// selections are kept so a retry is one tap (R-5). A 400 with no intervention
+// typed most likely means the dog has no protocol default (OQ-8), so the
+// intervention field opens with a hint.
 // =============================================================================
 
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { OUTCOMES, TRIGGER_TYPES } from '@tailsup/shared';
 import type { CreateBehaviorEventInput, Outcome, TriggerType } from '@tailsup/shared';
+import { colors, fontFallback, fonts, radii } from '../../../../lib/theme';
+import { useLang } from '../../../../lib/i18n';
 import { ApiError, postEvent } from '../../../../lib/api';
+import { OUTCOME_LABELS, TRIGGER_LABELS, intensityWord } from '../../../../lib/labels';
+import { Avatar, Button, IconButton, Notice,
+} from '../../../../components/app/AppKit';
+import {
+  IconAlert,
+  IconBack,
+  IconCheckMark,
+  IconMinus,
+  IconPlus,
+  IconVideo,
+  IconWave,
+} from '../../../../components/app/AppIcons';
 
-// Pre-defaults so an unchanged field costs zero taps (R-5).
 const DEFAULT_TRIGGER: TriggerType = 'dog';
 const DEFAULT_OUTCOME: Outcome = 'disengaged';
-const DEFAULT_INTENSITY = 5; // 1..10
-const DEFAULT_THRESHOLD = 5; // meters
-const THRESHOLD_PRESETS = [2, 5, 10, 20, 50] as const;
+const DEFAULT_INTENSITY = 5;
+const DEFAULT_THRESHOLD = 5;
 const INTENSITY_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+const copy = {
+  el: {
+    session: 'Συνεδρία',
+    count: (n: number) => (n === 0 ? 'Καμία καταγραφή ακόμα' : n === 1 ? '1 καταγραφή' : `${n} καταγραφές`),
+    finish: 'Τέλος',
+    back: 'Πίσω',
+    trigger: 'Τι τον ενεργοποίησε;',
+    otherPlaceholder: 'Τι ήταν; π.χ. ποδήλατο, γάτα',
+    otherLabel: 'Τι ήταν;',
+    distance: 'Απόσταση από το ερέθισμα',
+    metres: 'μέτρα',
+    less: 'Λιγότερα μέτρα',
+    more: 'Περισσότερα μέτρα',
+    intensity: 'Ένταση αντίδρασης',
+    calm: 'Ήρεμος',
+    wild: 'Εκτός ελέγχου',
+    outcome: 'Πώς τα πήγε;',
+    intervention: 'Παρέμβαση',
+    fromProtocol: 'από το πρωτόκολλο',
+    change: 'Αλλαγή',
+    useProtocol: 'Από πρωτόκολλο',
+    interventionPlaceholder: 'π.χ. u-turn, pattern game',
+    noDefault: 'Αυτός ο σκύλος δεν έχει προεπιλεγμένη παρέμβαση. Γράψτε ποια κάνατε.',
+    log: 'Καταγραφή',
+    logVideo: 'Καταγραφή και προσθήκη βίντεο',
+    saved: (n: number) => `✓ Καταγράφηκε. Έτοιμο για το επόμενο (${n} σε αυτή τη συνεδρία).`,
+    failed: 'Δεν καταγράφηκε:',
+    retryHint: 'Οι επιλογές σας κρατήθηκαν — πατήστε ξανά Καταγραφή.',
+  },
+  en: {
+    session: 'Session',
+    count: (n: number) => (n === 0 ? 'Nothing logged yet' : n === 1 ? '1 event' : `${n} events`),
+    finish: 'Finish',
+    back: 'Back',
+    trigger: 'What set them off?',
+    otherPlaceholder: 'What was it? e.g. bicycle, cat',
+    otherLabel: 'What was it?',
+    distance: 'Distance from the trigger',
+    metres: 'metres',
+    less: 'Fewer metres',
+    more: 'More metres',
+    intensity: 'Reaction intensity',
+    calm: 'Calm',
+    wild: 'Out of control',
+    outcome: 'How did it go?',
+    intervention: 'Intervention',
+    fromProtocol: 'from the protocol',
+    change: 'Change',
+    useProtocol: 'Use protocol',
+    interventionPlaceholder: 'e.g. u-turn, pattern game',
+    noDefault: "This dog has no default intervention. Type the one you used.",
+    log: 'Log',
+    logVideo: 'Log and add a video',
+    saved: (n: number) => `✓ Logged. Ready for the next one (${n} this session).`,
+    failed: 'Not logged:',
+    retryHint: 'Your selections are kept — tap Log again.',
+  },
+} as const;
+
+/** 1 m steps up close (where the training happens), 5 m steps further out. */
+function stepDistance(m: number, dir: 1 | -1): number {
+  if (dir === 1) return m < 10 ? m + 1 : Math.min(m + 5, 200);
+  return m <= 10 ? Math.max(m - 1, 0) : m - 5;
+}
+
+const webCursor = Platform.select({ web: { cursor: 'pointer' } as object, default: {} });
+
+function Choice({
+  label,
+  selected,
+  onPress,
+  disabled,
+  icon,
+  tall = false,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  disabled: boolean;
+  icon?: React.ReactNode;
+  tall?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ hovered, focused }) => [
+        styles.choice,
+        tall && styles.choiceTall,
+        selected ? (tall ? styles.choiceOutcomeOn : styles.choiceOn) : hovered && styles.choiceHover,
+        focused && styles.focus,
+        webCursor,
+      ]}
+    >
+      {icon}
+      <Text
+        style={[
+          styles.choiceText,
+          fontFallback.body,
+          selected && { fontFamily: fonts.bodyBold, color: tall ? colors.primarySoft : colors.onDark },
+          tall && styles.choiceTextTall,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 type Submit =
   | { kind: 'idle' }
   | { kind: 'saving' }
   | { kind: 'saved' }
-  | { kind: 'error'; message: string; needsIntervention: boolean };
+  | { kind: 'error'; message: string };
 
 export default function LogScreen() {
-  const { id: sessionId } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { lang } = useLang();
+  const c = copy[lang];
+  const { id: sessionId, dog: dogName, dogId } = useLocalSearchParams<{ id: string; dog?: string; dogId?: string }>();
 
-  // The four tap fields — local state, all pre-defaulted.
   const [triggerType, setTriggerType] = useState<TriggerType>(DEFAULT_TRIGGER);
+  const [triggerDetail, setTriggerDetail] = useState('');
   const [outcome, setOutcome] = useState<Outcome>(DEFAULT_OUTCOME);
   const [intensity, setIntensity] = useState<number>(DEFAULT_INTENSITY);
   const [thresholdMeters, setThresholdMeters] = useState<number>(DEFAULT_THRESHOLD);
-
+  const [editIntervention, setEditIntervention] = useState(false);
+  const [intervention, setIntervention] = useState('');
+  const [needsIntervention, setNeedsIntervention] = useState(false);
   const [submit, setSubmit] = useState<Submit>({ kind: 'idle' });
-  // Only used for the OQ-8 no-protocol-default escape hatch.
-  const [interventionOverride, setInterventionOverride] = useState('');
   const [savedCount, setSavedCount] = useState(0);
 
-  const resetFields = useCallback(() => {
+  const saving = submit.kind === 'saving';
+
+  const reset = useCallback(() => {
     setTriggerType(DEFAULT_TRIGGER);
+    setTriggerDetail('');
     setOutcome(DEFAULT_OUTCOME);
     setIntensity(DEFAULT_INTENSITY);
     setThresholdMeters(DEFAULT_THRESHOLD);
-    setInterventionOverride('');
+    // A typed intervention usually holds for the whole session — keep it.
   }, []);
 
   const doSubmit = useCallback(
-    async (withIntervention?: string) => {
+    async (thenAddVideo: boolean) => {
       setSubmit({ kind: 'saving' });
+      const typed = editIntervention ? intervention.trim() : '';
+      const detail = triggerType === 'other' ? triggerDetail.trim() : '';
       const body: CreateBehaviorEventInput = {
         triggerType,
         thresholdMeters,
         intensity,
         outcome,
-        // intervention is OMITTED in the common path (server defaults it). Only
-        // included when the user explicitly fills the no-default escape hatch.
-        ...(withIntervention && withIntervention.trim() !== ''
-          ? { intervention: withIntervention.trim() }
-          : {}),
+        ...(detail ? { triggerDetail: detail } : {}),
+        ...(typed ? { intervention: typed } : {}),
       };
       try {
-        await postEvent(sessionId, body);
+        const created = await postEvent(sessionId, body);
         setSavedCount((n) => n + 1);
-        resetFields(); // optimistic reset — ready for the next capture
+        setNeedsIntervention(false);
+        reset();
         setSubmit({ kind: 'saved' });
+        if (thenAddVideo) router.push({ pathname: '/events/[id]', params: { id: created.id } });
       } catch (err) {
         const status = err instanceof ApiError ? err.status : undefined;
-        const message = err instanceof ApiError ? err.message : 'Could not log the event.';
-        // A 400 here most likely means the dog has no protocol default intervention
-        // (OQ-8). Offer a one-time intervention entry rather than a 5th tap.
-        const needsIntervention = status === 400 && !withIntervention;
-        // Selections are NOT cleared on error — retry without re-tapping (R-5).
-        setSubmit({ kind: 'error', message, needsIntervention });
+        if (status === 400 && !typed) {
+          setNeedsIntervention(true);
+          setEditIntervention(true);
+        }
+        setSubmit({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) });
       }
     },
-    [sessionId, triggerType, thresholdMeters, intensity, outcome, resetFields],
+    [sessionId, triggerType, triggerDetail, thresholdMeters, intensity, outcome, editIntervention, intervention, reset, router],
   );
 
-  const saving = submit.kind === 'saving';
+  const finish = () => {
+    if (dogId) router.replace({ pathname: '/dogs/[id]/timeline', params: { id: dogId } });
+    else if (router.canGoBack()) router.back();
+    else router.replace('/dogs');
+  };
+
+  const blockedByIntervention = editIntervention && needsIntervention && intervention.trim() === '';
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.heading}>Log event</Text>
-        <Text style={styles.subheading}>Tap to adjust, then Log. Defaults are pre-selected.</Text>
-
-        {/* 1. Trigger */}
-        <Field label="Trigger">
-          <View style={styles.chipRow}>
-            {TRIGGER_TYPES.map((t) => (
-              <Chip
-                key={t}
-                label={t}
-                selected={triggerType === t}
-                disabled={saving}
-                onPress={() => setTriggerType(t)}
-              />
-            ))}
-          </View>
-        </Field>
-
-        {/* 2. Intensity */}
-        <Field label={`Intensity · ${intensity}/10`}>
-          <View style={styles.chipRow}>
-            {INTENSITY_VALUES.map((v) => (
-              <Chip
-                key={v}
-                label={String(v)}
-                compact
-                selected={intensity === v}
-                disabled={saving}
-                onPress={() => setIntensity(v)}
-              />
-            ))}
-          </View>
-        </Field>
-
-        {/* 3. Outcome */}
-        <Field label="Outcome">
-          <View style={styles.chipRow}>
-            {OUTCOMES.map((o) => (
-              <Chip
-                key={o}
-                label={o.replace(/_/g, ' ')}
-                selected={outcome === o}
-                disabled={saving}
-                onPress={() => setOutcome(o)}
-              />
-            ))}
-          </View>
-        </Field>
-
-        {/* 4. Threshold (meters) */}
-        <Field label={`Threshold · ${thresholdMeters}m`}>
-          <View style={styles.chipRow}>
-            {THRESHOLD_PRESETS.map((m) => (
-              <Chip
-                key={m}
-                label={`${m}m`}
-                selected={thresholdMeters === m}
-                disabled={saving}
-                onPress={() => setThresholdMeters(m)}
-              />
-            ))}
-          </View>
-        </Field>
-
-        {/* Submit */}
-        <Pressable
-          accessibilityRole="button"
-          disabled={saving}
-          onPress={() => void doSubmit()}
-          style={({ pressed }) => [
-            styles.submitButton,
-            saving && styles.submitDisabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          {saving ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.submitText}>Log event</Text>
-          )}
-        </Pressable>
-
-        {/* Lightweight confirmation — non-blocking */}
-        {submit.kind === 'saved' && (
-          <View style={[styles.banner, styles.bannerSuccess]}>
-            <Text style={styles.bannerSuccessText}>
-              ✓ Logged. Ready for the next one. ({savedCount} this session)
+    <View style={styles.root}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.header}>
+        <View style={styles.headerInner}>
+          <IconButton
+            icon={<IconBack color={colors.primarySoft} />}
+            accessibilityLabel={c.back}
+            tone="onDark"
+            onPress={finish}
+          />
+          {dogName ? <Avatar name={dogName} size={38} /> : null}
+          <View style={styles.headerText}>
+            <Text numberOfLines={1} style={[styles.headerTitle, fontFallback.display]}>
+              {dogName ? `${dogName} · ${c.session}` : c.session}
             </Text>
+            <Text style={[styles.headerSub, fontFallback.body]}>{c.count(savedCount)}</Text>
           </View>
-        )}
+          <Pressable accessibilityRole="button" onPress={finish} style={({ hovered }) => [styles.finish, hovered && { opacity: 0.85 }, webCursor]}>
+            <Text style={[styles.finishText, fontFallback.body]}>{c.finish}</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
 
-        {/* Error — selections preserved; retry inline */}
-        {submit.kind === 'error' && (
-          <View style={[styles.banner, styles.bannerError]}>
-            <Text style={styles.bannerErrorText}>✕ {submit.message}</Text>
-
-            {submit.needsIntervention ? (
-              <View style={styles.interventionBox}>
-                <Text style={styles.interventionHint}>
-                  This dog has no default intervention. Enter one for this event:
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. u-turn, treat scatter"
-                  value={interventionOverride}
-                  onChangeText={setInterventionOverride}
-                  editable={!saving}
-                  autoCapitalize="none"
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={saving || interventionOverride.trim() === ''}
-                  onPress={() => void doSubmit(interventionOverride)}
-                  style={({ pressed }) => [
-                    styles.retryButton,
-                    (saving || interventionOverride.trim() === '') && styles.submitDisabled,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.retryText}>Log with intervention</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                disabled={saving}
-                onPress={() => void doSubmit()}
-                style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.retryText}>Retry (selections kept)</Text>
-              </Pressable>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.body}>
+          {/* Trigger */}
+          <View style={styles.field}>
+            <Text style={[styles.label, fontFallback.body]}>{c.trigger}</Text>
+            <View accessibilityRole="radiogroup" style={styles.grid3}>
+              {TRIGGER_TYPES.map((t) => (
+                <View key={t} style={styles.cell3}>
+                  <Choice
+                    label={TRIGGER_LABELS[lang][t]}
+                    selected={triggerType === t}
+                    disabled={saving}
+                    onPress={() => setTriggerType(t)}
+                  />
+                </View>
+              ))}
+            </View>
+            {triggerType === 'other' && (
+              <TextInput
+                value={triggerDetail}
+                onChangeText={setTriggerDetail}
+                placeholder={c.otherPlaceholder}
+                placeholderTextColor={colors.placeholder}
+                accessibilityLabel={c.otherLabel}
+                maxLength={100}
+                autoFocus
+                editable={!saving}
+                returnKeyType="done"
+                style={[styles.input, styles.inputFocus, fontFallback.body]}
+              />
             )}
           </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      {children}
+          {/* Distance */}
+          <View style={styles.field}>
+            <Text style={[styles.label, fontFallback.body]}>{c.distance}</Text>
+            <View style={styles.stepper}>
+              <IconButton
+                icon={<IconMinus color={colors.primarySoft} />}
+                accessibilityLabel={c.less}
+                tone="outline"
+                size={54}
+                disabled={saving || thresholdMeters === 0}
+                onPress={() => setThresholdMeters((m) => stepDistance(m, -1))}
+              />
+              <View style={styles.distance} accessible accessibilityLabel={`${thresholdMeters} ${c.metres}`}>
+                <Text style={[styles.distanceValue, fontFallback.display]}>{thresholdMeters}</Text>
+                <Text style={[styles.distanceUnit, fontFallback.body]}>{c.metres}</Text>
+              </View>
+              <IconButton
+                icon={<IconPlus color={colors.primarySoft} />}
+                accessibilityLabel={c.more}
+                tone="outline"
+                size={54}
+                disabled={saving}
+                onPress={() => setThresholdMeters((m) => stepDistance(m, 1))}
+              />
+            </View>
+          </View>
+
+          {/* Intensity */}
+          <View style={styles.field}>
+            <View style={styles.labelRow}>
+              <Text style={[styles.label, fontFallback.body]}>{c.intensity}</Text>
+              <Text style={[styles.labelValue, fontFallback.body]}>
+                {intensity} / 10 · {intensityWord(intensity, lang)}
+              </Text>
+            </View>
+            <View accessibilityRole="radiogroup" style={styles.bar}>
+              {INTENSITY_VALUES.map((v) => {
+                const on = v === intensity;
+                return (
+                  <Pressable
+                    key={v}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${v}`}
+                    accessibilityState={{ checked: on }}
+                    disabled={saving}
+                    onPress={() => setIntensity(v)}
+                    style={({ focused }) => [
+                      styles.barCell,
+                      { backgroundColor: v < intensity ? colors.mint : on ? colors.primary : '#F3ECDF' },
+                      on && styles.barCellOn,
+                      focused && styles.focus,
+                      webCursor,
+                    ]}
+                  >
+                    <Text style={[styles.barText, fontFallback.body, { color: on ? colors.onDark : colors.textMuted }]}>{v}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.labelRow}>
+              <Text style={[styles.scaleEnd, fontFallback.body]}>{c.calm}</Text>
+              <Text style={[styles.scaleEnd, fontFallback.body]}>{c.wild}</Text>
+            </View>
+          </View>
+
+          {/* Outcome */}
+          <View style={styles.field}>
+            <Text style={[styles.label, fontFallback.body]}>{c.outcome}</Text>
+            <View accessibilityRole="radiogroup" style={styles.grid3}>
+              {OUTCOMES.map((o) => {
+                const on = outcome === o;
+                const icon =
+                  o === 'disengaged' ? (
+                    <IconCheckMark size={20} color={colors.primary} />
+                  ) : o === 'recovered_slowly' ? (
+                    <IconWave size={20} color={colors.accent} />
+                  ) : (
+                    <IconAlert size={20} color={colors.danger} />
+                  );
+                return (
+                  <View key={o} style={styles.cell3}>
+                    <Choice
+                      tall
+                      icon={icon}
+                      label={OUTCOME_LABELS[lang][o]}
+                      selected={on}
+                      disabled={saving}
+                      onPress={() => setOutcome(o)}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Intervention */}
+          <View style={styles.intervention}>
+            <View style={styles.interventionText}>
+              <Text style={[styles.interventionLabel, fontFallback.body]}>{c.intervention}</Text>
+              {editIntervention ? (
+                <TextInput
+                  value={intervention}
+                  onChangeText={setIntervention}
+                  placeholder={c.interventionPlaceholder}
+                  placeholderTextColor={colors.placeholder}
+                  accessibilityLabel={c.intervention}
+                  autoCapitalize="none"
+                  editable={!saving}
+                  style={[styles.inlineInput, fontFallback.body]}
+                />
+              ) : (
+                <Text style={[styles.interventionValue, fontFallback.body]}>{c.fromProtocol}</Text>
+              )}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setEditIntervention((v) => !v);
+                setIntervention('');
+              }}
+              style={({ hovered }) => [styles.smallButton, hovered && { opacity: 0.85 }, webCursor]}
+            >
+              <Text style={[styles.smallButtonText, fontFallback.body]}>{editIntervention ? c.useProtocol : c.change}</Text>
+            </Pressable>
+          </View>
+          {needsIntervention && <Notice tone="info">{c.noDefault}</Notice>}
+
+          {submit.kind === 'saved' && <Notice tone="success">{c.saved(savedCount)}</Notice>}
+          {submit.kind === 'error' && (
+            <Notice tone="error">
+              {c.failed} {submit.message} {c.retryHint}
+            </Notice>
+          )}
+        </View>
+      </ScrollView>
+
+      <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.footer}>
+        <View style={styles.footerInner}>
+          <IconButton
+            icon={<IconVideo color={colors.primarySoft} />}
+            accessibilityLabel={c.logVideo}
+            tone="outline"
+            size={56}
+            disabled={saving || blockedByIntervention}
+            onPress={() => void doSubmit(true)}
+          />
+          <View style={styles.footerMain}>
+            <Button
+              label={c.log}
+              size="lg"
+              block
+              loading={saving}
+              disabled={blockedByIntervention}
+              onPress={() => void doSubmit(false)}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
 
-function Chip({
-  label,
-  selected,
-  disabled,
-  compact,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  disabled?: boolean;
-  compact?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        compact && styles.chipCompact,
-        selected && styles.chipSelected,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
-    </Pressable>
-  );
-}
+const MAX = 560;
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' },
-  container: {
-    padding: 20,
-    gap: 16,
-    maxWidth: 560,
-    width: '100%',
-    alignSelf: 'center',
-    ...Platform.select({ web: { minHeight: '100%' as unknown as number }, default: {} }),
-  },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
-  subheading: { fontSize: 14, color: '#64748b', marginTop: -8 },
-  field: { gap: 8 },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    minWidth: 56,
+  root: { flex: 1, backgroundColor: colors.bg },
+  header: { backgroundColor: colors.primarySoft },
+  headerInner: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  chipCompact: { paddingHorizontal: 0, paddingVertical: 12, minWidth: 44 },
-  chipSelected: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  chipText: { fontSize: 15, fontWeight: '600', color: '#334155', textTransform: 'capitalize' },
-  chipTextSelected: { color: '#ffffff' },
-  submitButton: {
-    backgroundColor: '#16a34a',
-    borderRadius: 14,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  submitDisabled: { opacity: 0.6 },
-  submitText: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  banner: { borderRadius: 12, padding: 14, borderWidth: 1, gap: 10 },
-  bannerSuccess: { backgroundColor: '#f0fdf4', borderColor: '#86efac' },
-  bannerSuccessText: { color: '#166534', fontSize: 15, fontWeight: '600' },
-  bannerError: { backgroundColor: '#fef2f2', borderColor: '#fca5a5' },
-  bannerErrorText: { color: '#991b1b', fontSize: 15, fontWeight: '600' },
-  interventionBox: { gap: 8 },
-  interventionHint: { fontSize: 13, color: '#7f1d1d' },
-  input: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    paddingVertical: 12,
+    gap: 10,
     paddingHorizontal: 12,
-    fontSize: 15,
-    color: '#0f172a',
+    paddingVertical: 10,
+    width: '100%',
+    maxWidth: MAX + 24,
+    alignSelf: 'center',
   },
-  retryButton: {
-    backgroundColor: '#2563eb',
-    borderRadius: 10,
-    paddingVertical: 14,
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: { fontFamily: fonts.display, fontSize: 18, color: colors.onDark },
+  headerSub: { fontFamily: fonts.body, fontSize: 13, color: colors.onDarkMuted },
+  finish: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,252,245,0.16)',
+    justifyContent: 'center',
+  },
+  finishText: { fontFamily: fonts.bodyBold, fontSize: 14.5, color: colors.onDark },
+  scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24, alignItems: 'center' },
+  body: { width: '100%', maxWidth: MAX, gap: 18 },
+  field: { gap: 8 },
+  label: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 13,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.textMuted,
+  },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  labelValue: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
+  grid3: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  cell3: { width: '33.333%', padding: 4 },
+  choice: {
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  retryText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  pressed: { opacity: 0.85 },
+  choiceTall: { minHeight: 76, gap: 4, paddingVertical: 8, borderRadius: 16 },
+  choiceOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  choiceOutcomeOn: { backgroundColor: colors.mintSoft, borderColor: colors.primary, borderWidth: 2 },
+  choiceHover: { backgroundColor: '#FFFDF8', borderColor: colors.mint },
+  choiceText: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.text, textAlign: 'center' },
+  choiceTextTall: { fontSize: 14, lineHeight: 18 },
+  focus: { outlineColor: colors.accent, outlineWidth: 2, outlineStyle: 'solid' } as object,
+  input: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
+    fontFamily: fonts.body,
+    fontSize: 16,
+    color: colors.text,
+  },
+  inputFocus: { borderColor: colors.primary },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  distance: {
+    flex: 1,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: colors.bgAlt,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 8,
+  },
+  distanceValue: { fontFamily: fonts.display, fontSize: 32, lineHeight: 38, color: colors.text },
+  distanceUnit: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.textOnPeach },
+  bar: { flexDirection: 'row', gap: 4 },
+  barCell: { flex: 1, height: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  barCellOn: { transform: [{ scaleY: 1.08 }] },
+  barText: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  scaleEnd: { fontFamily: fonts.body, fontSize: 12.5, color: colors.textMuted },
+  intervention: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingLeft: 14,
+    paddingRight: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
+  },
+  interventionText: { flex: 1, minWidth: 0, gap: 2 },
+  interventionLabel: { fontFamily: fonts.bodyBold, fontSize: 12.5, color: colors.textMuted },
+  interventionValue: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.text },
+  inlineInput: {
+    fontFamily: fonts.body,
+    fontSize: 16,
+    color: colors.text,
+    paddingVertical: 4,
+    borderBottomWidth: 1.5,
+    borderBottomColor: colors.primary,
+  },
+  smallButton: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bgAlt,
+    justifyContent: 'center',
+  },
+  smallButtonText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.textOnPeach },
+  footer: { backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: '#F3ECDF' },
+  footerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    width: '100%',
+    maxWidth: MAX + 32,
+    alignSelf: 'center',
+  },
+  footerMain: { flex: 1 },
 });

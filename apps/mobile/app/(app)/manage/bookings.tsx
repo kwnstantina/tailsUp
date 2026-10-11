@@ -1,119 +1,150 @@
 // =============================================================================
-// /manage/bookings — TRAINER booking triage (Phase 3b-2, Unit C2 · AC-3b-9)
+// /manage/bookings — booking requests and the calendar ahead (Phase 3b-2,
+// redesigned).
 //
-// Reads the trainer id from the session, lists bookings newest-first (type +
-// requestedAt + StatusBadge), and offers the four status transitions (DG-4):
-// confirmed | declined | completed | cancelled → PATCH /bookings/:id/status.
-// The list reflects the new status on success; ApiError (400 bad status, 404
-// not-theirs) surfaces inline. Discriminated-union Status loading pattern.
+// Three tabs: waiting for an answer (requested), upcoming (confirmed, in the
+// future) and past (everything settled). Each booking shows WHO asked (the
+// name/contact the public form folds into `notes`), WHAT, and WHEN, with the
+// one or two actions that make sense for its stage:
+//   requested → Επιβεβαίωση / Απόρριψη
+//   confirmed → Ολοκληρώθηκε / Ακύρωση
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import type { BookingDTO } from '@tailsup/shared';
-import { colors, fontFallback, layout, radii, space, type as t } from '../../../lib/theme';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { BookingDTO, BookingStatus } from '@tailsup/shared';
+import { colors, fontFallback, fonts, radii } from '../../../lib/theme';
 import { useLang, type Lang } from '../../../lib/i18n';
 import { useSession } from '../../../lib/auth-client';
 import { ApiError, getTrainerBookings, updateBookingStatus } from '../../../lib/api';
-import { StatusBadge } from '../../../components/StatusBadge';
+import { BOOKING_TYPE_LABELS, formatTime, parseBookingNotes } from '../../../lib/labels';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Muted,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  Title,
+  type PillTone,
+} from '../../../components/app/AppKit';
+import { IconCheckMark } from '../../../components/app/AppIcons';
 
-// The four valid transition targets (DG-4) — `requested` is never a target.
-const ACTIONS = ['confirmed', 'declined', 'completed', 'cancelled'] as const;
-type Action = (typeof ACTIONS)[number];
+type Tab = 'pending' | 'upcoming' | 'past';
+type Action = Exclude<BookingStatus, 'requested'>;
 
 const copy = {
   el: {
-    heading: 'Κρατήσεις',
-    subheading: 'Αιτήματα κράτησης — άλλαξε την κατάστασή τους.',
+    title: 'Κρατήσεις',
+    subtitle: 'Αιτήματα ραντεβού από τον ιστότοπο και το πρόγραμμα που έρχεται.',
+    tabs: { pending: 'Αναμένουν', upcoming: 'Επερχόμενες', past: 'Παλιές' } as Record<Tab, string>,
+    empty: {
+      pending: 'Καμία κράτηση δεν περιμένει απάντηση.',
+      upcoming: 'Τίποτα προγραμματισμένο.',
+      past: 'Δεν υπάρχουν παλιές κρατήσεις.',
+    } as Record<Tab, string>,
     loading: 'Φόρτωση…',
     errorTitle: 'Δεν ήταν δυνατή η φόρτωση',
     retry: 'Δοκίμασε ξανά',
-    noTrainer: 'Ο λογαριασμός δεν έχει προφίλ εκπαιδευτή. Συνδέσου ως εκπαιδευτής.',
-    empty: 'Δεν υπάρχουν κρατήσεις ακόμη.',
-    requestedAt: 'Ζητήθηκε για',
+    noTrainer: 'Ο λογαριασμός δεν έχει προφίλ εκπαιδευτή.',
+    status: {
+      requested: 'Αναμένει',
+      confirmed: 'Επιβεβαιώθηκε',
+      declined: 'Απορρίφθηκε',
+      completed: 'Ολοκληρώθηκε',
+      cancelled: 'Ακυρώθηκε',
+    } as Record<BookingStatus, string>,
     actions: {
       confirmed: 'Επιβεβαίωση',
       declined: 'Απόρριψη',
-      completed: 'Ολοκλήρωση',
+      completed: 'Ολοκληρώθηκε',
       cancelled: 'Ακύρωση',
     } as Record<Action, string>,
-    types: { assessment: 'Αξιολόγηση', private: 'Ιδιωτική', group: 'Ομαδική' } as Record<string, string>,
+    unnamed: 'Χωρίς όνομα',
   },
   en: {
-    heading: 'Bookings',
-    subheading: 'Booking requests — change their status.',
+    title: 'Bookings',
+    subtitle: 'Appointment requests from the website and the schedule ahead.',
+    tabs: { pending: 'Waiting', upcoming: 'Upcoming', past: 'Past' } as Record<Tab, string>,
+    empty: {
+      pending: 'No booking is waiting for an answer.',
+      upcoming: 'Nothing scheduled.',
+      past: 'No past bookings.',
+    } as Record<Tab, string>,
     loading: 'Loading…',
     errorTitle: 'Could not load bookings',
     retry: 'Try again',
-    noTrainer: 'This account has no trainer profile. Sign in as a trainer.',
-    empty: 'No bookings yet.',
-    requestedAt: 'Requested for',
+    noTrainer: 'This account has no trainer profile.',
+    status: {
+      requested: 'Waiting',
+      confirmed: 'Confirmed',
+      declined: 'Declined',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    } as Record<BookingStatus, string>,
     actions: {
       confirmed: 'Confirm',
       declined: 'Decline',
-      completed: 'Complete',
+      completed: 'Completed',
       cancelled: 'Cancel',
     } as Record<Action, string>,
-    types: { assessment: 'Assessment', private: 'Private', group: 'Group' } as Record<string, string>,
+    unnamed: 'No name',
   },
 } as const;
 
-type Copy = (typeof copy)[Lang];
+const STATUS_TONE: Record<BookingStatus, PillTone> = {
+  requested: 'peach',
+  confirmed: 'mint',
+  completed: 'mint',
+  declined: 'neutral',
+  cancelled: 'neutral',
+};
 
-type Status =
-  | { kind: 'idle' }
-  | { kind: 'pending' }
-  | { kind: 'success'; bookings: BookingDTO[] }
-  | { kind: 'error'; message: string };
+type Status = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; bookings: BookingDTO[] };
 
-function messageFor(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  return 'Something went wrong. Please try again.';
+const webCursor = Platform.select({ web: { cursor: 'pointer' } as object, default: {} });
+
+function tabOf(b: BookingDTO, now: number): Tab {
+  if (b.status === 'requested') return 'pending';
+  if (b.status === 'confirmed' && new Date(b.requestedAt).getTime() >= now) return 'upcoming';
+  return 'past';
 }
 
-function formatDateTime(iso: string, lang: Lang): string {
+function DateBlock({ iso, lang }: { iso: string; lang: Lang }) {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(lang === 'el' ? 'el-GR' : 'en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const locale = lang === 'el' ? 'el-GR' : 'en-GB';
+  return (
+    <View style={styles.dateBlock}>
+      <Text style={[styles.dateMonth, fontFallback.body]}>{d.toLocaleDateString(locale, { month: 'short' })}</Text>
+      <Text style={[styles.dateDay, fontFallback.display]}>{d.getDate()}</Text>
+      <Text style={[styles.dateWeekday, fontFallback.body]}>{d.toLocaleDateString(locale, { weekday: 'short' })}</Text>
+    </View>
+  );
 }
 
-export default function ManageBookingsScreen() {
+export default function BookingsScreen() {
   const { lang } = useLang();
   const c = copy[lang];
   const { data: session } = useSession();
   const trainerId = session?.user?.trainerId ?? null;
-
-  const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [tab, setTab] = useState<Tab>('pending');
+  const [busy, setBusy] = useState<{ id: string; action: Action } | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
 
   const load = useCallback(async () => {
-    setStatus({ kind: 'pending' });
+    setStatus({ kind: 'loading' });
     if (!trainerId) {
       setStatus({ kind: 'error', message: copy[lang].noTrainer });
       return;
     }
     try {
-      const bookings = await getTrainerBookings(trainerId);
-      bookings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setStatus({ kind: 'success', bookings });
+      setStatus({ kind: 'ready', bookings: await getTrainerBookings(trainerId) });
     } catch (err) {
-      setStatus({ kind: 'error', message: messageFor(err) });
+      setStatus({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) });
     }
   }, [trainerId, lang]);
 
@@ -121,158 +152,170 @@ export default function ManageBookingsScreen() {
     void load();
   }, [load]);
 
-  const onTransition = useCallback(async (id: string, next: Action) => {
-    setUpdatingId(id);
+  const onAction = useCallback(async (id: string, action: Action) => {
+    setBusy({ id, action });
     setActionError(null);
     try {
-      const updated = await updateBookingStatus(id, { status: next });
+      const updated = await updateBookingStatus(id, { status: action });
       setStatus((s) =>
-        s.kind === 'success'
-          ? { ...s, bookings: s.bookings.map((b) => (b.id === updated.id ? updated : b)) }
-          : s,
+        s.kind === 'ready' ? { ...s, bookings: s.bookings.map((b) => (b.id === updated.id ? updated : b)) } : s,
       );
     } catch (err) {
-      setActionError({ id, message: messageFor(err) });
+      setActionError({ id, message: err instanceof ApiError ? err.message : String(err) });
     } finally {
-      setUpdatingId(null);
+      setBusy(null);
     }
   }, []);
 
+  const now = Date.now();
+  const bookings = status.kind === 'ready' ? status.bookings : [];
+  const visible = bookings
+    .filter((b) => tabOf(b, now) === tab)
+    .sort((a, b) => {
+      const d = new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
+      return tab === 'past' ? -d : d;
+    });
+
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>{c.heading}</Text>
-        <Text style={styles.subheading}>{c.subheading}</Text>
+    <Screen maxWidth={900}>
+      <View style={styles.header}>
+        <Title>{c.title}</Title>
+        <Muted size={16}>{c.subtitle}</Muted>
+      </View>
 
-        {(status.kind === 'idle' || status.kind === 'pending') && (
-          <View style={[styles.card, styles.cardRow]}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.cardBody}>{c.loading}</Text>
+      {status.kind === 'loading' && <LoadingState label={c.loading} />}
+      {status.kind === 'error' && (
+        <ErrorState title={c.errorTitle} message={status.message} retryLabel={c.retry} onRetry={() => void load()} />
+      )}
+
+      {status.kind === 'ready' && (
+        <>
+          <View accessibilityRole="tablist" style={styles.tabs}>
+            {(['pending', 'upcoming', 'past'] as const).map((t) => {
+              const on = t === tab;
+              const n = bookings.filter((b) => tabOf(b, now) === t).length;
+              return (
+                <Pressable
+                  key={t}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => setTab(t)}
+                  style={({ hovered, focused }) => [
+                    styles.tab,
+                    on ? styles.tabOn : hovered && styles.tabHover,
+                    focused && styles.focus,
+                    webCursor,
+                  ]}
+                >
+                  <Text style={[styles.tabText, fontFallback.body, on && styles.tabTextOn]}>
+                    {c.tabs[t]} · {n}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-        )}
 
-        {status.kind === 'error' && (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.cardTitle}>{c.errorTitle}</Text>
-            <Text style={styles.cardBody}>{status.message}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void load()}
-              style={({ focused, pressed }) => [
-                styles.actionButton,
-                focused && styles.focusRing,
-                pressed && styles.pressed,
-                Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-              ]}
-            >
-              <Text style={styles.actionButtonText}>{c.retry}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {status.kind === 'success' && status.bookings.length === 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardBody}>{c.empty}</Text>
-          </View>
-        )}
-
-        {status.kind === 'success' &&
-          status.bookings.map((booking) => {
-            const busy = updatingId === booking.id;
-            return (
-              <View key={booking.id} style={styles.bookingCard}>
-                <View style={styles.bookingHeader}>
-                  <Text style={styles.bookingType}>{c.types[booking.type] ?? booking.type}</Text>
-                  <StatusBadge status={booking.status} />
-                </View>
-                <Text style={styles.bookingMeta}>
-                  {c.requestedAt}: {formatDateTime(booking.requestedAt, lang)}
-                </Text>
-                {booking.notes ? <Text style={styles.bookingNotes}>{booking.notes}</Text> : null}
-
-                <View style={styles.actionRow}>
-                  {ACTIONS.map((action) => {
-                    const isCurrent = booking.status === action;
-                    return (
-                      <Pressable
-                        key={action}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: busy || isCurrent, busy }}
-                        disabled={busy || isCurrent}
-                        onPress={() => void onTransition(booking.id, action)}
-                        style={({ focused, pressed }) => [
-                          styles.actionButton,
-                          focused && styles.focusRing,
-                          pressed && styles.pressed,
-                          (busy || isCurrent) && styles.blocked,
-                          Platform.select({ web: { cursor: busy || isCurrent ? 'default' : 'pointer' } as object, default: {} }),
-                        ]}
-                      >
-                        <Text style={styles.actionButtonText}>{c.actions[action]}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {busy && <ActivityIndicator color={colors.primary} style={styles.busySpinner} />}
-                {actionError?.id === booking.id && (
-                  <Text style={styles.errorText}>{actionError.message}</Text>
-                )}
-              </View>
-            );
-          })}
-      </ScrollView>
-    </SafeAreaView>
+          {visible.length === 0 ? (
+            <EmptyState message={c.empty[tab]} />
+          ) : (
+            <View style={styles.list}>
+              {visible.map((b) => {
+                const who = parseBookingNotes(b.notes);
+                const actions: Action[] =
+                  b.status === 'requested' ? ['confirmed', 'declined'] : b.status === 'confirmed' ? ['completed', 'cancelled'] : [];
+                const email = who.contact && /@/.test(who.contact) ? who.contact : null;
+                return (
+                  <Panel key={b.id} style={styles.card}>
+                    <View style={styles.cardRow}>
+                      <DateBlock iso={b.requestedAt} lang={lang} />
+                      <View style={styles.cardText}>
+                        <View style={styles.cardHead}>
+                          <Text numberOfLines={1} style={[styles.name, fontFallback.body]}>
+                            {who.name ?? c.unnamed}
+                          </Text>
+                          <Pill label={c.status[b.status]} tone={STATUS_TONE[b.status]} />
+                        </View>
+                        <Text style={[styles.meta, fontFallback.body]}>
+                          {BOOKING_TYPE_LABELS[lang][b.type]} · {formatTime(b.requestedAt, lang)}
+                        </Text>
+                        {who.contact &&
+                          (email ? (
+                            <Pressable
+                              accessibilityRole="link"
+                              onPress={() => void Linking.openURL(`mailto:${email}`)}
+                              style={webCursor}
+                            >
+                              <Text style={[styles.link, fontFallback.body]}>{who.contact}</Text>
+                            </Pressable>
+                          ) : (
+                            <Text style={[styles.meta, fontFallback.body]}>{who.contact}</Text>
+                          ))}
+                        {who.note ? <Text style={[styles.note, fontFallback.body]}>«{who.note}»</Text> : null}
+                      </View>
+                    </View>
+                    {actions.length > 0 && (
+                      <View style={styles.actions}>
+                        {actions.map((a, i) => (
+                          <Button
+                            key={a}
+                            label={c.actions[a]}
+                            variant={i === 0 ? (a === 'confirmed' ? 'primary' : 'green') : 'quiet'}
+                            icon={i === 0 ? <IconCheckMark size={18} color={a === 'confirmed' ? colors.text : colors.onDark} /> : undefined}
+                            loading={busy?.id === b.id && busy.action === a}
+                            disabled={!!busy}
+                            onPress={() => void onAction(b.id, a)}
+                          />
+                        ))}
+                      </View>
+                    )}
+                    {actionError?.id === b.id && <Notice tone="error">{actionError.message}</Notice>}
+                  </Panel>
+                );
+              })}
+            </View>
+          )}
+        </>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    padding: space.md,
-    gap: space.sm,
-    maxWidth: layout.maxProse,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  heading: { ...t.h2, ...fontFallback.display, color: colors.text },
-  subheading: { ...t.body, ...fontFallback.body, color: colors.textMuted, marginTop: -space.xs },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
-  },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  cardError: { backgroundColor: '#FBEAEA', borderColor: '#E4B7B7' },
-  cardTitle: { ...t.h3, ...fontFallback.display, color: colors.text },
-  cardBody: { ...t.body, ...fontFallback.body, color: colors.textMuted },
-  bookingCard: {
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
-  },
-  bookingHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.xs },
-  bookingType: { ...t.h3, ...fontFallback.display, color: colors.text },
-  bookingMeta: { ...t.caption, ...fontFallback.body, color: colors.textMuted },
-  bookingNotes: { ...t.body, ...fontFallback.body, color: colors.text, marginTop: space.xs },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs },
-  actionButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.base,
-    paddingVertical: 9,
+  header: { gap: 6 },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tab: {
+    minHeight: 40,
     paddingHorizontal: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.fieldBorder,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
   },
-  actionButtonText: { ...t.caption, ...fontFallback.body, color: colors.bg, fontSize: 13 },
-  focusRing: { borderColor: colors.accent },
-  pressed: { opacity: 0.85 },
-  blocked: { opacity: 0.5 },
-  busySpinner: { alignSelf: 'flex-start', marginTop: space.xs },
-  errorText: { ...t.body, ...fontFallback.body, color: '#B00020', marginTop: space.xs },
+  tabOn: { backgroundColor: colors.text, borderColor: colors.text },
+  tabHover: { backgroundColor: colors.bgAlt },
+  tabText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.text },
+  tabTextOn: { fontFamily: fonts.bodyBold, color: colors.onDark },
+  focus: { outlineColor: colors.accent, outlineWidth: 2, outlineStyle: 'solid' } as object,
+  list: { gap: 12 },
+  card: { gap: 14 },
+  cardRow: { flexDirection: 'row', gap: 16 },
+  dateBlock: {
+    width: 62,
+    borderRadius: 14,
+    backgroundColor: colors.bgAlt,
+    alignItems: 'center',
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  dateMonth: { fontFamily: fonts.bodyBold, fontSize: 12, textTransform: 'uppercase', color: colors.accent },
+  dateDay: { fontFamily: fonts.display, fontSize: 26, lineHeight: 30, color: colors.text },
+  dateWeekday: { fontFamily: fonts.body, fontSize: 12, color: colors.textOnPeach },
+  cardText: { flex: 1, minWidth: 0, gap: 4 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  name: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
+  meta: { fontFamily: fonts.body, fontSize: 14.5, color: colors.textMuted },
+  link: { fontFamily: fonts.bodySemiBold, fontSize: 14.5, color: colors.accent },
+  note: { fontFamily: fonts.body, fontSize: 14.5, lineHeight: 21, color: colors.text, marginTop: 4 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 });

@@ -33,11 +33,13 @@ import type {
   LeadDTO,
   MediaDTO,
   MediaPlaybackUrlDTO,
+  MyTrainerDTO,
   PresignRequest,
   PresignResponse,
   SessionSummaryDTO,
   UpdateBehaviorEventInput,
   UpdateBookingStatusInput,
+  UpdateLeadStatusInput,
 } from '@tailsup/shared';
 import { authClient } from './auth-client';
 
@@ -246,6 +248,15 @@ export function convertLead(id: string): Promise<ConvertLeadResponse> {
   });
 }
 
+// PATCH /leads/:id/status — mark a request contacted, or archive it as lost.
+export function updateLeadStatus(id: string, body: UpdateLeadStatusInput): Promise<LeadDTO> {
+  return request<LeadDTO>(`/leads/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  });
+}
+
 // POST /clients/:id/login — provision the client's BetterAuth login (trainer sets pw).
 export function createClientLogin(
   clientId: string,
@@ -270,16 +281,21 @@ export function getMyHomework(): Promise<HomeworkDTO[]> {
   return request<HomeworkDTO[]>('/me/homework');
 }
 
-// PATCH /me/homework/:id { completed:true } — the only client write in 3b-2.
-export function completeHomework(id: string): Promise<HomeworkDTO> {
+// PATCH /me/homework/:id — tick an exercise done, or untick it (the client's only write).
+export function setHomeworkCompleted(id: string, completed: boolean): Promise<HomeworkDTO> {
   return request<HomeworkDTO>(`/me/homework/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ completed: true }),
+    body: JSON.stringify({ completed }),
   });
 }
 
 // GET /me/bookings — the client's bookings, newest-first (feeds derived reminders).
 export function getMyBookings(): Promise<BookingDTO[]> {
   return request<BookingDTO[]>('/me/bookings');
+}
+
+// GET /me/trainer — who the signed-in client trains with (name + email).
+export function getMyTrainer(): Promise<MyTrainerDTO> {
+  return request<MyTrainerDTO>('/me/trainer');
 }

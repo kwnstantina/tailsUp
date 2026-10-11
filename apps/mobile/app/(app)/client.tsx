@@ -1,147 +1,233 @@
 // =============================================================================
-// /client — the CLIENT DASHBOARD (Phase 3b-2, Unit C2 · AC-3b-10)
+// /client — the dog owner's dashboard (Phase 3b-2, redesigned).
 //
-// Replaces the 3b-1 placeholder with the real dashboard. On mount it fetches the
-// client's progress, homework and bookings in parallel (session-scoped /me/*),
-// tracked by a discriminated-union Status (idle → pending → success | error).
-// It renders:
-//   (a) Progress — one ProgressCurve per dog fed the DTO's chronological points.
-//       DG-8: thresholdMeters FALLS over time; a shorter coping distance means
-//       the dog stays calm even when the trigger is closer — so the caption
-//       frames a falling line as IMPROVEMENT (before → now distance).
-//   (b) Homework — a HomeworkRow per item (incomplete first); "mark complete"
-//       calls completeHomework(id) with a pending row and updates it on success,
-//       surfacing an ApiError inline on failure.
-//   (c) Reminders — DERIVED in-app (DG-3, no new fetch): pending-homework count
-//       + the next upcoming booking (future requestedAt, not declined/cancelled).
-// Keeps the useLang() EL/EN copy-object pattern; empty data → friendly cards.
+// Written for an owner, not a trainer: the progress card leads with one number
+// and one sentence ("6μ — from 20μ at the start"), the chart has axes, and
+// homework is a checklist with a progress bar that can be ticked and unticked.
+// Then the next appointment and who to contact.
+//
+// On a phone a bottom tab bar filters the page to one section (Αρχική shows
+// everything); on wide screens everything is visible in two columns.
 // =============================================================================
 
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { BookingDTO, ClientProgressDTO, HomeworkDTO } from '@tailsup/shared';
-import { colors, fontFallback, layout, radii, space, type as t, useReducedMotion } from '../../lib/theme';
+import type { BookingDTO, ClientProgressDTO, HomeworkDTO, MyTrainerDTO } from '@tailsup/shared';
+import { colors, fontFallback, fonts, radii, useResponsive } from '../../lib/theme';
 import { useLang, type Lang } from '../../lib/i18n';
 import { useSession } from '../../lib/auth-client';
-import { ApiError, completeHomework, getMyBookings, getMyHomework, getMyProgress } from '../../lib/api';
-import { ProgressCurve } from '../../components/ProgressCurve';
-import { HomeworkRow } from '../../components/HomeworkRow';
+import { ApiError, getMyBookings, getMyHomework, getMyProgress, getMyTrainer, setHomeworkCompleted } from '../../lib/api';
+import { BOOKING_TYPE_LABELS, formatDay, formatDayTime, formatTime } from '../../lib/labels';
+import {
+  Avatar,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Muted,
+  Notice,
+  Panel,
+  Pill,
+  Screen,
+  SectionHeader,
+  Title,
+} from '../../components/app/AppKit';
+import { IconCalendar, IconChart, IconCheckMark, IconChecklist, IconHome, IconMailOutline } from '../../components/app/AppIcons';
+import { ThresholdChart, chartSummary } from '../../components/app/ThresholdChart';
+
+type Tab = 'home' | 'progress' | 'homework' | 'bookings';
 
 const copy = {
   el: {
-    eyebrow: 'Ο λογαριασμός μου',
-    greeting: (name: string) => `Γεια σου, ${name}`,
-    loading: 'Φόρτωση του πίνακά σου…',
+    hello: (n: string) => (n ? `Γεια σου, ${n}` : 'Γεια σου'),
+    subtitle: (dog: string | null) => (dog ? `Δες πώς τα πάει ο ${dog}.` : 'Καλώς ήρθες στο TailsUp.'),
+    loading: 'Φόρτωση…',
     errorTitle: 'Δεν ήταν δυνατή η φόρτωση',
     retry: 'Δοκίμασε ξανά',
-    progressTitle: 'Πρόοδος',
-    progressHelp:
-      'Η γραμμή δείχνει την απόσταση στην οποία ο σκύλος σου μένει ήρεμος. Όσο πιο κοντά (χαμηλότερη), τόσο καλύτερα — μαθαίνει να παραμένει ήρεμος ακόμη κι όταν το ερέθισμα πλησιάζει.',
-    distanceLabel: (from: number, to: number) => `Απόσταση ηρεμίας: ${from}m → ${to}m`,
-    distanceImproved: 'Πλησιάζει με άνεση — πρόοδος.',
-    distanceSteady: 'Σταθερή απόσταση ηρεμίας.',
-    noSessions: 'Δεν έχουν καταγραφεί ακόμη συνεδρίες για αυτόν τον σκύλο.',
-    noDogs: 'Δεν υπάρχει ακόμη σκύλος συνδεδεμένος με τον λογαριασμό σου.',
-    homeworkTitle: 'Ασκήσεις για το σπίτι',
-    noHomework: 'Δεν υπάρχουν ασκήσεις αυτή τη στιγμή.',
-    remindersTitle: 'Υπενθυμίσεις',
-    pendingHomework: (n: number) =>
-      n === 1 ? '1 άσκηση σε εκκρεμότητα' : `${n} ασκήσεις σε εκκρεμότητα`,
-    noPendingHomework: 'Όλες οι ασκήσεις ολοκληρώθηκαν 🎉',
-    nextBooking: (type: string, date: string) => `Επόμενη συνεδρία: ${type} — ${date}`,
-    noBooking: 'Καμία προγραμματισμένη συνεδρία.',
+    tabs: { home: 'Αρχική', progress: 'Πρόοδος', homework: 'Ασκήσεις', bookings: 'Ραντεβού' } as Record<Tab, string>,
+    progressOf: (dog: string) => `Η πρόοδος του ${dog}`,
+    lastSession: (d: string) => `Τελευταία καταγραφή: ${d}`,
+    fromStart: (m: number) => `από ${m}μ στην αρχή`,
+    great: (dog: string) => `Ο ${dog} μένει πλέον ήρεμος πολύ πιο κοντά στα ερεθίσματα. Εξαιρετική δουλειά!`,
+    some: 'Σταθερή πρόοδος — συνέχισε τις ασκήσεις στο σπίτι.',
+    flat: 'Η απόσταση ηρεμίας μένει σταθερή. Οι ασκήσεις στο σπίτι κάνουν τη διαφορά.',
+    chartLabel: (dog: string, a: number, b: number) => `Απόσταση ηρεμίας του ${dog}: από ${a} σε ${b} μέτρα`,
+    explain: 'Η απόσταση ηρεμίας είναι πόσο κοντά σε ένα ερέθισμα (π.χ. άλλο σκύλο) μένει ήρεμος. Όσο μικραίνει, τόσο καλύτερα.',
+    noData: (dog: string) => `Μόλις γίνει η πρώτη συνεδρία με τον ${dog}, εδώ θα βλέπεις την πρόοδό του.`,
+    noDogs: 'Δεν υπάρχει ακόμα σκύλος στον λογαριασμό σου. Ο εκπαιδευτής σου θα τον προσθέσει.',
+    next: 'Επόμενο ραντεβού',
+    noNext: 'Κανένα προγραμματισμένο ραντεβού.',
+    homework: 'Ασκήσεις',
+    doneOf: (d: number, t: number) => `${d} από ${t}`,
+    noHomework: 'Καμία άσκηση αυτή τη στιγμή.',
+    done: 'Έγινε',
+    markDone: (t: string) => `Ολοκληρώθηκε: ${t}`,
+    allBookings: 'Τα ραντεβού σου',
+    noBookings: 'Δεν υπάρχουν ραντεβού.',
+    trainer: 'Ο εκπαιδευτής σου',
+    write: 'Στείλε email',
+    bookingStatus: { requested: 'Αναμένει', confirmed: 'Επιβεβαιώθηκε', completed: 'Ολοκληρώθηκε', declined: 'Δεν έγινε δεκτό', cancelled: 'Ακυρώθηκε' } as Record<string, string>,
   },
   en: {
-    eyebrow: 'My account',
-    greeting: (name: string) => `Hello, ${name}`,
-    loading: 'Loading your dashboard…',
+    hello: (n: string) => (n ? `Hi, ${n}` : 'Hi'),
+    subtitle: (dog: string | null) => (dog ? `See how ${dog} is doing.` : 'Welcome to TailsUp.'),
+    loading: 'Loading…',
     errorTitle: 'Could not load your dashboard',
     retry: 'Try again',
-    progressTitle: 'Progress',
-    progressHelp:
-      "The line shows the distance at which your dog stays calm. Closer (lower) is better — it means they cope even as the trigger gets nearer.",
-    distanceLabel: (from: number, to: number) => `Coping distance: ${from}m → ${to}m`,
-    distanceImproved: 'Coping at a closer distance — that’s progress.',
-    distanceSteady: 'Steady coping distance.',
-    noSessions: 'No sessions logged yet for this dog.',
-    noDogs: 'No dog is linked to your account yet.',
-    homeworkTitle: 'Homework',
+    tabs: { home: 'Home', progress: 'Progress', homework: 'Homework', bookings: 'Appointments' } as Record<Tab, string>,
+    progressOf: (dog: string) => `${dog}'s progress`,
+    lastSession: (d: string) => `Last logged: ${d}`,
+    fromStart: (m: number) => `from ${m}m at the start`,
+    great: (dog: string) => `${dog} now stays calm much closer to triggers. Great work!`,
+    some: 'Steady progress — keep up the homework.',
+    flat: 'The calm distance is holding steady. Homework is what moves it.',
+    chartLabel: (dog: string, a: number, b: number) => `${dog}'s calm distance: from ${a} to ${b} metres`,
+    explain: 'Calm distance is how close to a trigger (e.g. another dog) they stay calm. Smaller is better.',
+    noData: (dog: string) => `After the first session with ${dog}, their progress shows up here.`,
+    noDogs: 'There is no dog on your account yet. Your trainer will add one.',
+    next: 'Next appointment',
+    noNext: 'No appointment scheduled.',
+    homework: 'Homework',
+    doneOf: (d: number, t: number) => `${d} of ${t}`,
     noHomework: 'No homework right now.',
-    remindersTitle: 'Reminders',
-    pendingHomework: (n: number) => (n === 1 ? '1 homework item pending' : `${n} homework items pending`),
-    noPendingHomework: 'All homework complete 🎉',
-    nextBooking: (type: string, date: string) => `Next session: ${type} — ${date}`,
-    noBooking: 'No upcoming session scheduled.',
+    done: 'Done',
+    markDone: (t: string) => `Completed: ${t}`,
+    allBookings: 'Your appointments',
+    noBookings: 'No appointments.',
+    trainer: 'Your trainer',
+    write: 'Send an email',
+    bookingStatus: { requested: 'Waiting', confirmed: 'Confirmed', completed: 'Completed', declined: 'Not accepted', cancelled: 'Cancelled' } as Record<string, string>,
   },
 } as const;
 
-const BOOKING_TYPE_LABELS: Record<Lang, Record<string, string>> = {
-  el: { assessment: 'Αξιολόγηση', private: 'Ιδιωτική', group: 'Ομαδική' },
-  en: { assessment: 'Assessment', private: 'Private', group: 'Group' },
-};
-
 type Status =
-  | { kind: 'idle' }
-  | { kind: 'pending' }
-  | { kind: 'success'; progress: ClientProgressDTO[]; homework: HomeworkDTO[]; bookings: BookingDTO[] }
-  | { kind: 'error'; message: string };
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; progress: ClientProgressDTO[]; homework: HomeworkDTO[]; bookings: BookingDTO[]; trainer: MyTrainerDTO | null };
 
-function messageFor(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  return 'Something went wrong. Please try again.';
-}
+const webCursor = Platform.select({ web: { cursor: 'pointer' } as object, default: {} });
 
-// Next upcoming booking: a future requestedAt whose status is still live
-// (not declined/cancelled/completed), earliest first. DG-3 — derived in-app.
-function nextUpcomingBooking(bookings: BookingDTO[]): BookingDTO | null {
+function nextBooking(bookings: BookingDTO[]): BookingDTO | null {
   const now = Date.now();
-  const upcoming = bookings
-    .filter((b) => b.status === 'confirmed' || b.status === 'requested')
-    .filter((b) => {
-      const ts = new Date(b.requestedAt).getTime();
-      return !Number.isNaN(ts) && ts >= now;
-    })
-    .sort((a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime());
-  return upcoming[0] ?? null;
+  return (
+    bookings
+      .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.requestedAt).getTime() >= now)
+      .sort((a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime())[0] ?? null
+  );
 }
 
-function formatDateTime(iso: string, lang: Lang): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(lang === 'el' ? 'el-GR' : 'en-GB', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function ProgressCard({ entry, lang }: { entry: ClientProgressDTO; lang: Lang }) {
+  const c = copy[lang];
+  const { dog, points } = entry;
+  const summary = chartSummary(points);
+  const sentence = !summary ? '' : summary.improvedPct >= 20 ? c.great(dog.name) : summary.improvedPct > 0 ? c.some : c.flat;
+  const unit = lang === 'el' ? 'μ' : 'm';
+  return (
+    <View style={styles.hero}>
+      <View style={styles.heroHead}>
+        <Avatar name={dog.name} size={52} />
+        <View style={styles.heroHeadText}>
+          <Text style={[styles.heroTitle, fontFallback.display]}>{c.progressOf(dog.name)}</Text>
+          {summary && (
+            <Text style={[styles.heroSub, fontFallback.body]}>
+              {c.lastSession(formatDay(points[points.length - 1].occurredAt, lang))}
+            </Text>
+          )}
+        </View>
+      </View>
+      {summary ? (
+        <>
+          <View style={styles.heroNumber}>
+            <Text style={[styles.heroValue, fontFallback.display]}>
+              {summary.latest}
+              {unit}
+            </Text>
+            <Text style={[styles.heroFrom, fontFallback.body]}>{c.fromStart(summary.first)}</Text>
+          </View>
+          <Text style={[styles.heroSentence, fontFallback.body]}>{sentence}</Text>
+          <ThresholdChart
+            points={points}
+            lang={lang}
+            tone="dark"
+            height={170}
+            accessibilityLabel={c.chartLabel(dog.name, summary.first, summary.latest)}
+          />
+        </>
+      ) : (
+        <Text style={[styles.heroSentence, fontFallback.body]}>{c.noData(dog.name)}</Text>
+      )}
+    </View>
+  );
+}
+
+function HomeworkItem({
+  item,
+  lang,
+  busy,
+  onToggle,
+}: {
+  item: HomeworkDTO;
+  lang: Lang;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  const c = copy[lang];
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: item.completed, busy }}
+      accessibilityLabel={c.markDone(item.title)}
+      disabled={busy}
+      onPress={onToggle}
+      style={({ hovered, focused }) => [
+        styles.hw,
+        item.completed ? styles.hwDone : hovered && styles.hwHover,
+        focused && styles.focus,
+        webCursor,
+      ]}
+    >
+      <View style={[styles.check, item.completed && styles.checkOn, busy && { opacity: 0.5 }]}>
+        {item.completed && <IconCheckMark size={18} color={colors.onDark} />}
+      </View>
+      <View style={styles.hwText}>
+        <Text style={[styles.hwTitle, fontFallback.body, item.completed && { color: colors.textOnMint }]}>{item.title}</Text>
+        {item.completed ? (
+          <Text style={[styles.hwMeta, fontFallback.body]}>
+            {c.done}
+            {item.completedAt ? ` · ${formatDay(item.completedAt, lang)}` : ''}
+          </Text>
+        ) : (
+          <Text style={[styles.hwBody, fontFallback.body]}>{item.instructions}</Text>
+        )}
+      </View>
+    </Pressable>
+  );
 }
 
 export default function ClientScreen() {
   const { lang } = useLang();
   const c = copy[lang];
+  const { isWide } = useResponsive();
   const { data: session } = useSession();
-  const name = session?.user?.name ?? '';
-  // Quality floor: the reduced-motion preference is honoured (the curve renders
-  // as a static final state); read here to keep the screen motion-safe.
-  void useReducedMotion();
-
-  const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  const firstName = (session?.user?.name ?? '').split(' ')[0];
+  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [tab, setTab] = useState<Tab>('home');
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setStatus({ kind: 'pending' });
-    setActionError(null);
+    setStatus({ kind: 'loading' });
     try {
-      const [progress, homework, bookings] = await Promise.all([
+      const [progress, homework, bookings, trainer] = await Promise.all([
         getMyProgress(),
         getMyHomework(),
         getMyBookings(),
+        // The trainer card is a nicety — never fail the dashboard over it.
+        getMyTrainer().catch(() => null),
       ]);
-      setStatus({ kind: 'success', progress, homework, bookings });
+      setStatus({ kind: 'ready', progress, homework, bookings, trainer });
     } catch (err) {
-      setStatus({ kind: 'error', message: messageFor(err) });
+      setStatus({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) });
     }
   }, []);
 
@@ -149,212 +235,279 @@ export default function ClientScreen() {
     void load();
   }, [load]);
 
-  const onComplete = useCallback(async (id: string) => {
-    setCompletingId(id);
+  const onToggle = useCallback(async (item: HomeworkDTO) => {
+    setBusyId(item.id);
     setActionError(null);
     try {
-      const updated = await completeHomework(id);
-      setStatus((s) =>
-        s.kind === 'success'
-          ? { ...s, homework: s.homework.map((h) => (h.id === updated.id ? updated : h)) }
-          : s,
-      );
+      const updated = await setHomeworkCompleted(item.id, !item.completed);
+      setStatus((s) => (s.kind === 'ready' ? { ...s, homework: s.homework.map((h) => (h.id === updated.id ? updated : h)) } : s));
     } catch (err) {
-      setActionError(messageFor(err));
+      setActionError(err instanceof ApiError ? err.message : String(err));
     } finally {
-      setCompletingId(null);
+      setBusyId(null);
     }
   }, []);
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.eyebrow}>{c.eyebrow}</Text>
-        <Text style={styles.title}>{c.greeting(name)}</Text>
-
-        {(status.kind === 'idle' || status.kind === 'pending') && (
-          <View style={[styles.card, styles.cardRow]}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.cardBody}>{c.loading}</Text>
-          </View>
-        )}
-
-        {status.kind === 'error' && (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.cardTitle}>{c.errorTitle}</Text>
-            <Text style={styles.cardBody}>{status.message}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void load()}
-              style={({ focused, pressed }) => [
-                styles.retryButton,
-                focused && styles.focusRing,
-                pressed && styles.pressed,
-                Platform.select({ web: { cursor: 'pointer' } as object, default: {} }),
-              ]}
-            >
-              <Text style={styles.retryButtonText}>{c.retry}</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {status.kind === 'success' && (
-          <>
-            {/* ── (a) Progress ──────────────────────────────────────────────── */}
-            <Text style={styles.sectionTitle}>{c.progressTitle}</Text>
-            <Text style={styles.sectionHelp}>{c.progressHelp}</Text>
-            {status.progress.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.cardBody}>{c.noDogs}</Text>
-              </View>
-            ) : (
-              status.progress.map((p) => (
-                <ProgressPanel key={p.dog.id} c={c} progress={p} />
-              ))
-            )}
-
-            {/* ── (b) Homework ──────────────────────────────────────────────── */}
-            <Text style={styles.sectionTitle}>{c.homeworkTitle}</Text>
-            {actionError && (
-              <View style={[styles.card, styles.cardError]}>
-                <Text style={styles.cardBody}>{actionError}</Text>
-              </View>
-            )}
-            {status.homework.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={styles.cardBody}>{c.noHomework}</Text>
-              </View>
-            ) : (
-              [...status.homework]
-                .sort((a, b) => Number(a.completed) - Number(b.completed))
-                .map((h) => (
-                  <HomeworkRow
-                    key={h.id}
-                    homework={h}
-                    pending={completingId === h.id}
-                    onComplete={() => void onComplete(h.id)}
-                  />
-                ))
-            )}
-
-            {/* ── (c) Reminders (derived in-app, DG-3) ──────────────────────── */}
-            <RemindersCard c={c} lang={lang} homework={status.homework} bookings={status.bookings} />
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-type Copy = (typeof copy)[Lang];
-
-function ProgressPanel({ c, progress }: { c: Copy; progress: ClientProgressDTO }) {
-  const { points, dog } = progress;
-  if (points.length === 0) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{dog.name}</Text>
-        <Text style={styles.cardBody}>{c.noSessions}</Text>
-      </View>
-    );
-  }
-  const first = points[0].thresholdMeters;
-  const last = points[points.length - 1].thresholdMeters;
-  // DG-8: a FALLING threshold (coping at a closer distance) is improvement.
-  const improved = last < first;
-  return (
-    <View style={styles.progressCard}>
-      <Text style={styles.cardTitle}>{dog.name}</Text>
-      <ProgressCurve data={points} height={200} style={styles.curve} />
-      <Text style={styles.distanceLabel}>{c.distanceLabel(first, last)}</Text>
-      <Text style={styles.distanceNote}>{improved ? c.distanceImproved : c.distanceSteady}</Text>
+  const firstDog = status.kind === 'ready' ? (status.progress[0]?.dog.name ?? null) : null;
+  const header = (
+    <View style={styles.header}>
+      <Title>{c.hello(firstName)}</Title>
+      <Muted size={16}>{c.subtitle(firstDog)}</Muted>
     </View>
   );
-}
 
-function RemindersCard({
-  c,
-  lang,
-  homework,
-  bookings,
-}: {
-  c: Copy;
-  lang: Lang;
-  homework: HomeworkDTO[];
-  bookings: BookingDTO[];
-}) {
-  const pending = homework.filter((h) => !h.completed).length;
-  const next = nextUpcomingBooking(bookings);
+  if (status.kind !== 'ready') {
+    return (
+      <Screen maxWidth={1000}>
+        {header}
+        {status.kind === 'loading' ? (
+          <LoadingState label={c.loading} />
+        ) : (
+          <ErrorState title={c.errorTitle} message={status.message} retryLabel={c.retry} onRetry={() => void load()} />
+        )}
+      </Screen>
+    );
+  }
+
+  const show = (t: Tab) => isWide || tab === 'home' || tab === t;
+  const next = nextBooking(status.bookings);
+  const done = status.homework.filter((h) => h.completed).length;
+  const total = status.homework.length;
+  const homework = [...status.homework].sort((a, b) => Number(a.completed) - Number(b.completed));
+
+  const progressSection = show('progress') && (
+    <View style={styles.section}>
+      {status.progress.length === 0 ? (
+        <EmptyState message={c.noDogs} />
+      ) : (
+        status.progress.map((p) => <ProgressCard key={p.dog.id} entry={p} lang={lang} />)
+      )}
+      {tab === 'progress' && <Muted size={14}>{c.explain}</Muted>}
+    </View>
+  );
+
+  const nextSection = (tab === 'home' || tab === 'bookings' || isWide) && (
+    <View style={styles.next}>
+      <View style={styles.nextDate}>
+        <IconCalendar color={colors.accent} />
+      </View>
+      <View style={styles.nextText}>
+        <Text style={[styles.nextLabel, fontFallback.body]}>{c.next}</Text>
+        {next ? (
+          <>
+            <Text style={[styles.nextWhen, fontFallback.body]}>{formatDayTime(next.requestedAt, lang)}</Text>
+            <Text style={[styles.nextWhat, fontFallback.body]}>{BOOKING_TYPE_LABELS[lang][next.type]}</Text>
+          </>
+        ) : (
+          <Text style={[styles.nextWhat, fontFallback.body]}>{c.noNext}</Text>
+        )}
+      </View>
+      {next && <Pill label={c.bookingStatus[next.status]} tone={next.status === 'confirmed' ? 'mint' : 'neutral'} />}
+    </View>
+  );
+
+  const homeworkSection = show('homework') && (
+    <View style={styles.section}>
+      <SectionHeader title={c.homework} action={total > 0 ? <Muted>{c.doneOf(done, total)}</Muted> : undefined} />
+      {total > 0 && (
+        <View style={styles.track} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: total, now: done }}>
+          <View style={[styles.fill, { width: `${Math.round((done / total) * 100)}%` }]} />
+        </View>
+      )}
+      {total === 0 && <EmptyState message={c.noHomework} />}
+      {homework.map((h) => (
+        <HomeworkItem key={h.id} item={h} lang={lang} busy={busyId === h.id} onToggle={() => void onToggle(h)} />
+      ))}
+      {actionError && <Notice tone="error">{actionError}</Notice>}
+    </View>
+  );
+
+  const bookingsSection = (tab === 'bookings' || (isWide && status.bookings.length > 1)) && (
+    <View style={styles.section}>
+      <SectionHeader title={c.allBookings} />
+      {status.bookings.length === 0 && <EmptyState message={c.noBookings} />}
+      {status.bookings.length > 0 && (
+        <Panel style={styles.bookingList}>
+          {status.bookings.map((b, i) => (
+            <View key={b.id} style={[styles.bookingRow, i > 0 && styles.divider]}>
+              <View style={styles.bookingText}>
+                <Text style={[styles.bookingWhen, fontFallback.body]}>
+                  {formatDay(b.requestedAt, lang)} · {formatTime(b.requestedAt, lang)}
+                </Text>
+                <Text style={[styles.nextWhat, fontFallback.body]}>{BOOKING_TYPE_LABELS[lang][b.type]}</Text>
+              </View>
+              <Pill label={c.bookingStatus[b.status]} tone={b.status === 'confirmed' || b.status === 'completed' ? 'mint' : 'neutral'} />
+            </View>
+          ))}
+        </Panel>
+      )}
+    </View>
+  );
+
+  const trainerSection = (tab === 'home' || isWide) && status.trainer && (
+    <Panel style={styles.trainer}>
+      <Avatar name={status.trainer.name} size={52} />
+      <View style={styles.trainerText}>
+        <Text style={[styles.nextLabel, fontFallback.body, { color: colors.textMuted }]}>{c.trainer}</Text>
+        <Text style={[styles.trainerName, fontFallback.body]}>{status.trainer.name}</Text>
+      </View>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${c.write}: ${status.trainer.name}`}
+        onPress={() => void Linking.openURL(`mailto:${status.trainer!.email}`)}
+        style={({ hovered, focused }) => [styles.trainerButton, hovered && { backgroundColor: colors.mintSoft }, focused && styles.focus, webCursor]}
+      >
+        <IconMailOutline size={18} color={colors.primarySoft} />
+      </Pressable>
+    </Panel>
+  );
+
   return (
-    <View style={styles.remindersCard}>
-      <Text style={styles.remindersTitle}>{c.remindersTitle}</Text>
-      <Text style={styles.reminderItem}>
-        {pending > 0 ? `• ${c.pendingHomework(pending)}` : `• ${c.noPendingHomework}`}
-      </Text>
-      <Text style={styles.reminderItem}>
-        {next
-          ? `• ${c.nextBooking(BOOKING_TYPE_LABELS[lang][next.type] ?? next.type, formatDateTime(next.requestedAt, lang))}`
-          : `• ${c.noBooking}`}
-      </Text>
+    <View style={styles.root}>
+      <View style={styles.flex}>
+        <Screen maxWidth={1000} padTop={24}>
+          {header}
+          {isWide ? (
+            <View style={styles.columns}>
+              <View style={styles.colMain}>
+                {progressSection}
+                {bookingsSection}
+              </View>
+              <View style={styles.colSide}>
+                {nextSection}
+                {homeworkSection}
+                {trainerSection}
+              </View>
+            </View>
+          ) : (
+            <>
+              {progressSection}
+              {nextSection}
+              {homeworkSection}
+              {bookingsSection}
+              {trainerSection}
+            </>
+          )}
+        </Screen>
+      </View>
+      {!isWide && (
+        <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.tabBar}>
+          <View accessibilityRole="tablist" style={styles.tabRow}>
+            {(
+              [
+                ['home', IconHome],
+                ['progress', IconChart],
+                ['homework', IconChecklist],
+                ['bookings', IconCalendar],
+              ] as const
+            ).map(([t, Icon]) => {
+              const on = tab === t;
+              const fg = on ? colors.primarySoft : colors.textMuted;
+              return (
+                <Pressable
+                  key={t}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => setTab(t)}
+                  style={[styles.tab, webCursor]}
+                >
+                  <View style={[styles.tabIcon, on && styles.tabIconOn]}>
+                    <Icon color={fg} />
+                  </View>
+                  <Text style={[styles.tabText, fontFallback.body, { color: fg }, on && { fontFamily: fonts.bodyBold }]}>
+                    {c.tabs[t]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SafeAreaView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    padding: space.md,
-    gap: space.sm,
-    maxWidth: layout.maxProse,
-    width: '100%',
-    alignSelf: 'center',
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  header: { gap: 6 },
+  columns: { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
+  colMain: { flex: 3, minWidth: 0, gap: 24 },
+  colSide: { flex: 2, minWidth: 0, gap: 24 },
+  section: { gap: 12 },
+  focus: { outlineColor: colors.accent, outlineWidth: 2, outlineStyle: 'solid' } as object,
+  hero: { backgroundColor: colors.primarySoft, borderRadius: 24, padding: 18, gap: 10 },
+  heroHead: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  heroHeadText: { flex: 1, minWidth: 0, gap: 2 },
+  heroTitle: { fontFamily: fonts.display, fontSize: 20, color: colors.onDark },
+  heroSub: { fontFamily: fonts.body, fontSize: 14, color: colors.onDarkMuted },
+  heroNumber: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 },
+  heroValue: { fontFamily: fonts.display, fontSize: 52, lineHeight: 58, color: colors.accentSoft },
+  heroFrom: { fontFamily: fonts.body, fontSize: 15, color: colors.onDarkMuted },
+  heroSentence: { fontFamily: fonts.body, fontSize: 15.5, lineHeight: 23, color: colors.onDark },
+  next: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: colors.accentPeach,
   },
-  eyebrow: { ...t.eyebrow },
-  title: { ...t.h2, ...fontFallback.display, color: colors.text },
-  sectionTitle: { ...t.h3, ...fontFallback.display, color: colors.text, marginTop: space.sm },
-  sectionHelp: { ...t.caption, ...fontFallback.body, color: colors.textMuted, marginTop: -space.xs },
-  card: {
+  nextDate: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  nextText: { flex: 1, minWidth: 0, gap: 2 },
+  nextLabel: { fontFamily: fonts.bodyBold, fontSize: 12.5, letterSpacing: 1, textTransform: 'uppercase', color: colors.textOnPeach },
+  nextWhen: { fontFamily: fonts.bodyBold, fontSize: 16.5, color: colors.text },
+  nextWhat: { fontFamily: fonts.body, fontSize: 14.5, color: colors.textOnPeach },
+  track: { height: 10, borderRadius: radii.pill, backgroundColor: '#F3ECDF', overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.primary },
+  hw: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.fieldBorder,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  cardError: { backgroundColor: '#FBEAEA', borderColor: '#E4B7B7' },
-  cardTitle: { ...t.h3, ...fontFallback.display, color: colors.text },
-  cardBody: { ...t.body, ...fontFallback.body, color: colors.textMuted },
-  progressCard: {
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: space.xs,
-  },
-  curve: { marginTop: space.xs },
-  distanceLabel: { ...t.body, ...fontFallback.body, color: colors.text, marginTop: space.xs },
-  distanceNote: { ...t.caption, ...fontFallback.body, color: colors.accent },
-  remindersCard: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.lg,
-    padding: space.md,
-    gap: 6,
-  },
-  remindersTitle: { ...t.h3, ...fontFallback.display, color: colors.bg },
-  reminderItem: { ...t.body, ...fontFallback.body, color: colors.bg },
-  retryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
-    borderRadius: radii.base,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginTop: space.xs,
+  hwDone: { backgroundColor: colors.mintSoft, borderColor: colors.mintSoft, alignItems: 'center' },
+  hwHover: { backgroundColor: '#FFFDF8' },
+  check: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
   },
-  retryButtonText: { ...t.body, ...fontFallback.body, color: colors.bg },
-  focusRing: { borderColor: colors.accent },
-  pressed: { opacity: 0.85 },
+  checkOn: { backgroundColor: colors.primary },
+  hwText: { flex: 1, minWidth: 0, gap: 4 },
+  hwTitle: { fontFamily: fonts.bodyBold, fontSize: 16.5, color: colors.text },
+  hwBody: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.textMuted },
+  hwMeta: { fontFamily: fonts.body, fontSize: 14, color: colors.textOnMint },
+  bookingList: { padding: 0, overflow: 'hidden' },
+  bookingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16 },
+  divider: { borderTopWidth: 1, borderTopColor: '#F3ECDF' },
+  bookingText: { flex: 1, minWidth: 0, gap: 2 },
+  bookingWhen: { fontFamily: fonts.bodyBold, fontSize: 15.5, color: colors.text },
+  trainer: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  trainerText: { flex: 1, minWidth: 0, gap: 2 },
+  trainerName: { fontFamily: fonts.bodyBold, fontSize: 16.5, color: colors.text },
+  trainerButton: {
+    width: 46,
+    height: 46,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBar: { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.fieldBorder },
+  tabRow: { flexDirection: 'row', paddingHorizontal: 6, paddingTop: 6, paddingBottom: 4 },
+  tab: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 4, minHeight: 52 },
+  tabIcon: { width: 54, height: 30, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  tabIconOn: { backgroundColor: colors.mintSoft },
+  tabText: { fontFamily: fonts.bodySemiBold, fontSize: 12 },
 });

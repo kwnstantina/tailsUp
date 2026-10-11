@@ -1,45 +1,33 @@
 // =============================================================================
-// (app)/_layout.tsx — the AUTHED app group (Phase 3b — FR-AUTH3).
+// (app)/_layout.tsx — the AUTHED app group.
 //
-// Phase 3a moved the Phase 1/2 trainer screens here. Phase 3b bolts the AUTH
-// GUARD onto this layout (and only this layout): while the session resolves we
-// show a spinner; with no session we redirect to /login; otherwise we render the
-// screens. Public (site) routes + /login live outside this group and stay open.
+// Auth guard (Phase 3b): spinner while the session resolves, /login without
+// one. Then every screen renders inside <AppShell> — the sidebar / tab bar the
+// role needs — over a header-less Stack: each screen draws its own title, so
+// there is no generic "My Dogs · Sign out" bar any more.
+//
+// Role routing: a client only ever sees /client; a trainer who lands on
+// /client (an old bookmark) goes to their Today screen. The server enforces the
+// same split per endpoint — this just keeps people out of empty screens.
 //
 // Screens:
-//   /health                  — API health check (dev)
-//   /dogs + /dogs/[id]/timeline, /sessions/[id]/log, /events/[id]  — trainer
-//   /client                  — client landing (dashboard content lands in 3b-2)
-//
-// A Sign out control in the header calls authClient.signOut() and returns to
-// /login — completing the auth loop for the foundation demo.
+//   trainer — /today, /dogs, /dogs/[id]/timeline (dog profile),
+//             /sessions/[id]/log (focus mode), /events/[id],
+//             /manage/leads, /manage/bookings
+//   client  — /client
+//   dev     — /health
 // =============================================================================
 
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { Redirect, Stack, useRouter } from 'expo-router';
-import { colors, fonts } from '../../lib/theme';
-import { authClient, useSession } from '../../lib/auth-client';
-
-function SignOutButton() {
-  const router = useRouter();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={async () => {
-        await authClient.signOut();
-        router.replace('/login');
-      }}
-      style={({ pressed }) => [{ paddingHorizontal: 12, paddingVertical: 6, opacity: pressed ? 0.7 : 1 }]}
-    >
-      <Text style={{ color: '#ffffff', fontFamily: fonts.body, fontSize: 14 }}>Sign out</Text>
-    </Pressable>
-  );
-}
+import { ActivityIndicator, View } from 'react-native';
+import { Redirect, Stack, usePathname } from 'expo-router';
+import { colors } from '../../lib/theme';
+import { useSession } from '../../lib/auth-client';
+import { AppShell, CLIENT_HOME, TRAINER_HOME } from '../../components/app/AppShell';
 
 export default function AppLayout() {
   const { data: session, isPending } = useSession();
+  const pathname = usePathname();
 
-  // Session still resolving (cookie/secure-storage read) — hold with a spinner.
   if (isPending) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
@@ -48,28 +36,17 @@ export default function AppLayout() {
     );
   }
 
-  // Unauthenticated → the public /login route (server also enforces per-endpoint).
   if (!session?.user) {
     return <Redirect href="/login" />;
   }
 
+  const role = session.user.role === 'trainer' ? 'trainer' : 'client';
+  if (role === 'client' && pathname !== '/client') return <Redirect href={CLIENT_HOME} />;
+  if (role === 'trainer' && pathname === '/client') return <Redirect href={TRAINER_HOME} />;
+
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: '#ffffff',
-        headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <SignOutButton />,
-      }}
-    >
-      <Stack.Screen name="health" options={{ title: 'TailsUp · API Health' }} />
-      <Stack.Screen name="client" options={{ title: 'My Dashboard' }} />
-      <Stack.Screen name="dogs/index" options={{ title: 'My Dogs' }} />
-      <Stack.Screen name="manage/leads" options={{ title: 'Leads' }} />
-      <Stack.Screen name="manage/bookings" options={{ title: 'Bookings' }} />
-      <Stack.Screen name="dogs/[id]/timeline" options={{ title: 'Timeline' }} />
-      <Stack.Screen name="sessions/[id]/log" options={{ title: 'Log Event' }} />
-      <Stack.Screen name="events/[id]" options={{ title: 'Event Detail' }} />
-    </Stack>
+    <AppShell role={role} userName={session.user.name} trainerId={session.user.trainerId ?? null}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+    </AppShell>
   );
 }
