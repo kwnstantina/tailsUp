@@ -599,8 +599,10 @@ site, BetterAuth, and the role dashboards. Still **NOT** built:
 ## Design direction
 
 The site runs the **playful** direction: fresh green `#3B7A63` with orange
-`#EF9440` as the call-to-action colour, Fredoka + Nunito Sans, pill buttons and
-28–40px radii. Tokens live in `apps/mobile/lib/theme.ts`, which is the
+`#EF9440` as the call-to-action colour, Comfortaa + Manrope, pill buttons and
+28–40px radii. Both fonts were picked for their full Greek character set — any
+replacement must have one too, or Greek text silently falls back to a system
+font on web. Tokens live in `apps/mobile/lib/theme.ts`, which is the
 operational source of truth.
 
 `design_system.md` still describes the earlier austere direction (deep green

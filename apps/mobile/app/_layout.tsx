@@ -5,8 +5,8 @@
 // shell: load the three font cuts with a splash gate, then render the matched
 // route group via <Slot/> wrapped in <SafeAreaProvider> + <LanguageProvider>.
 //
-//   - Fonts: Fredoka 500/600 (headings) + Nunito Sans 400/600/700 (body/UI) —
-//     the playful direction's pairing, replacing Fraunces/Inter. Only these cuts
+//   - Fonts: Comfortaa 600/700 (headings) + Manrope 400/600/700 (body/UI) —
+//     both carry a full Greek character set (see lib/theme.ts). Only these cuts
 //     are loaded. Native splash-gates until they resolve. Web is NOT gated: see
 //     GATE_ON_FONTS below.
 //   - LanguageProvider: the bilingual (EL/EN) context (default 'el'); every
@@ -22,12 +22,8 @@ import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { useFonts, Fredoka_500Medium, Fredoka_600SemiBold } from '@expo-google-fonts/fredoka';
-import {
-  NunitoSans_400Regular,
-  NunitoSans_600SemiBold,
-  NunitoSans_700Bold,
-} from '@expo-google-fonts/nunito-sans';
+import { useFonts, Comfortaa_600SemiBold, Comfortaa_700Bold } from '@expo-google-fonts/comfortaa';
+import { Manrope_400Regular, Manrope_600SemiBold, Manrope_700Bold } from '@expo-google-fonts/manrope';
 import { LanguageProvider } from '../lib/i18n';
 
 // Keep the native splash up until the fonts are ready (no-op-ish on web).
@@ -39,16 +35,16 @@ const GATE_ON_FONTS = Platform.OS !== 'web';
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Fredoka_500Medium,
-    Fredoka_600SemiBold,
-    NunitoSans_400Regular,
-    NunitoSans_600SemiBold,
-    NunitoSans_700Bold,
+    Comfortaa_600SemiBold,
+    Comfortaa_700Bold,
+    Manrope_400Regular,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
   });
 
   useEffect(() => {
     // Hide the splash once fonts resolve OR fail (a font error must not trap the
-    // user on the splash — we fall back to Georgia/system-ui, DS-2 quality floor).
+    // user on the splash — we fall back to the system stacks, DS-2 quality floor).
     if (fontsLoaded || fontError) void SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
 

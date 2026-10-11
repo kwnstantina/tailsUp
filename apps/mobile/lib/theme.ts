@@ -88,36 +88,45 @@ export const colors = {
 } as const;
 
 // ── Fonts (DS-2) ───────────────────────────────────────────────────────────
-// Use the exact imported google-fonts family names (NOT "Fraunces"). Only three
-// cuts are loaded (Fraunces 400/500 + Inter 400) for a smaller bundle / faster
-// FOUT. Display = headings only; body/UI never uses Fraunces.
+// Comfortaa (headings) + Manrope (body/UI). The site is Greek-first, so both
+// were chosen for a full GREEK character set — the previous pair (Fredoka +
+// Nunito Sans) had none, and on web every Greek letter silently fell back to a
+// system font (or, in bold, to the browser's serif). Comfortaa keeps the
+// rounded, friendly display voice; Manrope is a warm, legible UI sans.
+//
+// Each weight is its own family name, exactly as expo-font registers it
+// (useFonts in app/_layout.tsx). On WEB the name carries its own fallback
+// stack, so text renders in a system face during the swap instead of the
+// browser's default serif, and the weight is never lost — the bold cut IS the
+// family. Native takes the bare registered name.
+const DISPLAY_FALLBACK = '"Trebuchet MS", system-ui, sans-serif';
+const BODY_FALLBACK = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+function family(name: string, fallback: string): string {
+  return Platform.select({ web: `"${name}", ${fallback}`, default: name });
+}
+
 export const fonts = {
-  display: 'Fredoka_600SemiBold', // headings (H1/H2)
-  displayRegular: 'Fredoka_500Medium', // lighter headings (H3)
-  body: 'NunitoSans_400Regular', // all body / UI text
-  bodySemiBold: 'NunitoSans_600SemiBold', // labels, nav
-  bodyBold: 'NunitoSans_700Bold', // button labels, eyebrows, emphasis
+  display: family('Comfortaa_700Bold', DISPLAY_FALLBACK), // headings (H1/H2)
+  displayRegular: family('Comfortaa_600SemiBold', DISPLAY_FALLBACK), // lighter headings (H3)
+  body: family('Manrope_400Regular', BODY_FALLBACK), // all body / UI text
+  bodySemiBold: family('Manrope_600SemiBold', BODY_FALLBACK), // labels, nav
+  bodyBold: family('Manrope_700Bold', BODY_FALLBACK), // button labels, eyebrows, emphasis
 } as const;
 
-// Web FOUT fallback stacks (DS-2 quality floor). Spread these into a heading /
-// body text style on web so Georgia / system-ui show acceptably while the
-// webfont loads; never block the whole site on font load.
+// Kept so existing call sites (`[style, fontFallback.body]`) still compile, but
+// now empty: the fallback lives inside `fonts.*` above. As an override it used
+// to REPLACE the family — and with it the weight and the Greek glyphs.
 export const fontFallback = {
-  display: Platform.select({
-    web: { fontFamily: '"Fredoka", "Trebuchet MS", sans-serif' } as TextStyle,
-    default: {},
-  }),
-  body: Platform.select({
-    web: { fontFamily: '"Nunito Sans", system-ui, sans-serif' } as TextStyle,
-    default: {},
-  }),
+  display: {} as TextStyle,
+  body: {} as TextStyle,
 } as const;
 
 // ── Type scale (DS-2 · RN-converted) ─────────────────────────────────────────
 // letterSpacing in POINTS (em × fontSize); lineHeight in PX (≈ multiplier ×
 // fontSize). A single concrete fontSize is chosen inside each kickoff range so
 // the build is deterministic.
-// Fredoka is rounder and wider than Fraunces, so the negative tracking that
+// Comfortaa (like Fredoka before it) is rounder and wider than a serif, so the negative tracking that
 // tightened the old serif is dialled back — over-tightening a rounded face
 // makes it look cramped rather than crafted. Sizes go UP across the board and
 // body line-height loosens: the playful direction is generous, not dense.
@@ -196,7 +205,7 @@ export function useResponsive(): Responsive {
 }
 
 // ── Responsive type (playful direction) ──────────────────────────────────────
-// Fredoka at 52px is right on a desktop hero and wrong on a 375px phone — it
+// A rounded display face at 52px is right on a desktop hero and wrong on a 375px phone — it
 // breaks to three words a line and the page loses its shape. `type` above stays
 // the DESKTOP scale (every existing consumer keeps its values); `typePhone`
 // holds the narrow cuts, and `useType()` picks between them at the `md` break.

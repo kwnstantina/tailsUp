@@ -13,10 +13,8 @@
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.22",
-    "@expo-google-fonts/fraunces": "^0.4.1",
-    "@expo-google-fonts/fredoka": "^0.4.1",
-    "@expo-google-fonts/inter": "^0.4.2",
-    "@expo-google-fonts/nunito-sans": "^0.4.2",
+    "@expo-google-fonts/comfortaa": "^0.4.2",
+    "@expo-google-fonts/manrope": "^0.4.2",
     "@tailsup/shared": "*",
     "expo": "~54.0.35",
     "expo-constants": "~18.0.13",
