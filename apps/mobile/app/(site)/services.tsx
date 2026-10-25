@@ -36,6 +36,7 @@ import {
 import { ProgressCurve } from '../../components/ProgressCurve';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { sampleCurve, services } from '../../lib/site-content';
 
 // Same order as `services` in site-content.
@@ -81,6 +82,10 @@ const copy = {
     trackingCta: 'Book a first hello',
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function ServicesPage() {
   const { lang } = useLang();

@@ -27,7 +27,8 @@ import { join, resolve } from 'node:path';
 
 const distDir = resolve(process.argv[2] ?? 'dist');
 
-// Any (app) route serves — they are byte-identical. /client.html is a plain
+// Any (app) route serves — they differ only in which route chunk they preload
+// (SDK 58), and the router loads the right one for the URL. /client.html is a plain
 // static route with no dynamic segment, so it is the stable pick.
 const SHELL_SOURCE = 'client.html';
 const SHELL_TARGET = 'app-shell.html';

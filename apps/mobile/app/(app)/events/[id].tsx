@@ -201,7 +201,7 @@ export default function EventDetailScreen() {
       setUpload({ kind: 'error', message: c.permission });
       return;
     }
-    // SDK 54: mediaTypes is a STRING ARRAY (['videos']), not MediaTypeOptions.
+    // Since SDK 54: mediaTypes is a STRING ARRAY (['videos']), not MediaTypeOptions.
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 1 });
     if (picked.canceled || picked.assets.length === 0) return;
 
@@ -401,7 +401,7 @@ function VideoPlayerView({ url }: { url: string }) {
   const player = useVideoPlayer(url, (p: VideoPlayer) => {
     p.loop = false;
   });
-  return <VideoView player={player} style={styles.video} allowsFullscreen contentFit="contain" />;
+  return <VideoView player={player} style={styles.video} contentFit="contain" />;
 }
 
 const styles = StyleSheet.create({

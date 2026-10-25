@@ -40,6 +40,7 @@ import {
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { ApiError, createBooking } from '../../lib/api';
 import { useLang, type Lang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { practice } from '../../lib/site-content';
 
 type SubmitStatus =
@@ -136,6 +137,10 @@ const copy = {
     errorPrefix: 'Something went wrong: ',
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function BookingPage() {
   const { lang } = useLang();

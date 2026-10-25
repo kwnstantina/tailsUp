@@ -36,6 +36,7 @@ import {
 } from '../../components/ui';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { photos, type PhotoSlot } from '../../lib/photos';
 
 interface CaseStudy {
@@ -157,6 +158,10 @@ const copy = {
     cta: 'Book a first hello',
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function ResultsPage() {
   const { lang } = useLang();

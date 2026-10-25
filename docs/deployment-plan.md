@@ -67,9 +67,9 @@ be emitted as its literal bracket filename — `events/[id].html`,
 `/events/8f3c-...` matches no file on disk, so a static host returns a hard 404 and the
 client router never runs.
 
-All six `(app)` routes export as **one byte-identical client shell** (md5
-`1524c9c6bf4bb4d4146e5badd54b8225`, 27,560 bytes), so every dynamic path can be rewritten
-to a single shell. `post-export.mjs` copies that shell to a bracket-free
+All six `(app)` routes export the **same client shell** (byte-identical on SDK 54; on
+SDK 58 they differ only in which route chunk they preload, and the router loads the chunk
+for the actual URL), so every dynamic path can be rewritten to a single shell. `post-export.mjs` copies that shell to a bracket-free
 `/app-shell.html` — square brackets in a Cloudflare `_redirects` destination are not
 documented as supported, and a bracket-free path removes the question entirely.
 

@@ -39,6 +39,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ScrollViewInstance,
   type ViewStyle,
 } from 'react-native';
 import { colors, fonts, fontFallback, layout, radii, space, type, useResponsive } from '../lib/theme';
@@ -88,7 +89,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
   //
   // This ScrollView lives in the layout, so it survives route changes — without
   // the reset below, a new page opens at the previous page's scroll offset.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const pathname = usePathname();
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -136,7 +137,7 @@ function useInteraction() {
 
 /** Flattened so Radix's Slot merge keeps it — never pass an array or function. */
 function flat(...parts: (ViewStyle | false | undefined)[]): ViewStyle {
-  return StyleSheet.flatten(parts.filter(Boolean) as ViewStyle[]);
+  return StyleSheet.flatten(parts.filter(Boolean) as ViewStyle[]) ?? {};
 }
 
 /**

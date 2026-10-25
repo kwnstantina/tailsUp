@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row', backgroundColor: colors.bg },
   photoSide: { flex: 1, backgroundColor: colors.primarySoft, overflow: 'hidden' },
   photoShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     ...Platform.select({
       web: { backgroundImage: 'linear-gradient(to top, rgba(31,58,48,0.88), rgba(31,58,48,0) 55%)' } as object,
       default: { backgroundColor: 'rgba(31,58,48,0.35)' },

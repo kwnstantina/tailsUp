@@ -42,6 +42,7 @@ import { PracticeMap } from '../../components/PracticeMap';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { ApiError, createLead } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { practice } from '../../lib/site-content';
 
 type SubmitStatus =
@@ -114,6 +115,10 @@ const copy = {
     replyNote: `We usually reply ${practice.replyTime.en}.`,
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function ContactPage() {
   const { lang } = useLang();

@@ -18,12 +18,12 @@
 //  - R-2: native streams `file://` bytes via the BINARY_CONTENT upload task,
 //    which avoids the classic 0-byte `fetch`-of-a-file-uri bug and gives progress.
 //
-// IMPLEMENTATION NOTE (verified against the installed expo-file-system@19.x /
-// SDK 54): the binary PUT upload API (`createUploadTask` + BINARY_CONTENT +
-// progress) is exposed by the `expo-file-system/legacy` entry point. In this SDK
-// the NEW File API (`new File(uri)`) has no upload-task method, so the legacy
-// entry — the investigation's documented escape hatch (R-2) — is the supported
-// path. Importing from `expo-file-system/legacy` (not the main import) does NOT
+// IMPLEMENTATION NOTE (written against expo-file-system@19.x / SDK 54, still
+// valid on SDK 58): the binary PUT upload API (`createUploadTask` + BINARY_CONTENT
+// + progress) is exposed by the `expo-file-system/legacy` entry point. SDK 54's
+// NEW File API (`new File(uri)`) had no upload-task method, so the legacy entry —
+// the investigation's documented escape hatch (R-2) — was the supported path.
+// SDK 58 adds `File.upload()`; moving to it is optional, the legacy entry works. Importing from `expo-file-system/legacy` (not the main import) does NOT
 // trigger the runtime deprecation throw. Native only; web uses `fetch`.
 // =============================================================================
 

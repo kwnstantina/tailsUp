@@ -41,7 +41,7 @@ inline it. `EXPO_PUBLIC_*` values are **public** — no secrets. See
 
 ## Metro config (fallback only — currently NONE on purpose)
 
-Expo SDK 54 auto-configures Metro for npm workspaces, so there is **no
+Expo (SDK 54+) auto-configures Metro for npm workspaces, so there is **no
 `metro.config.js`**. Only if `@tailsup/shared` fails to resolve at bundle time
 ("Unable to resolve module @tailsup/shared") create `apps/mobile/metro.config.js`
 with exactly this, then restart the bundler:

@@ -23,7 +23,8 @@
 # 200 and no redirect — the same way `/about` serves about.html.
 #
 # /app-shell.html itself is emitted by scripts/post-export.mjs as a bracket-free
-# copy of the (app) client shell; all six (app) routes export byte-identical, and
+# copy of the (app) client shell; the (app) routes export the same shell (they differ
+# only in which route chunk they preload), and
 # square brackets in a Cloudflare destination are not documented as supported.
 #
 # ORDERING: every rule below is a specific path, never a catch-all splat, so none

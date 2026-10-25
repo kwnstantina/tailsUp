@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Honours .nvmrc (Node 20) so CI, the Cloudflare build and local dev
+          # Honours .nvmrc (Node 22) so CI, the Cloudflare build and local dev
           # all agree on the version.
           node-version-file: .nvmrc
           cache: npm

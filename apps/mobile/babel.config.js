@@ -1,4 +1,4 @@
-// Babel config for the Expo app (SDK 54).
+// Babel config for the Expo app (SDK 58).
 // `babel-preset-expo` handles JSX/TS transpilation AND wires up expo-router
 // (expo-router no longer needs a separate Babel plugin in SDK 50+/54 — it
 // works through babel-preset-expo).

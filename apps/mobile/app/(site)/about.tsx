@@ -38,6 +38,7 @@ import {
 } from '../../components/ui';
 import { colors, fontFallback, fonts, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { photos } from '../../lib/photos';
 
 const PROMISE_ICONS = [IconCheck, IconPair, IconRising];
@@ -121,6 +122,10 @@ const copy = {
     proofCta: 'Come and say hello',
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function AboutPage() {
   const { lang } = useLang();

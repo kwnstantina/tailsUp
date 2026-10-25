@@ -7,7 +7,7 @@
 //
 // -----------------------------------------------------------------------------
 // METRO MONOREPO NOTE (fallback — do NOT add preemptively):
-// Expo SDK 54 auto-configures Metro for npm workspaces, so this app ships with
+// Expo (SDK 54+) auto-configures Metro for npm workspaces, so this app ships with
 // NO metro.config.js. If `@tailsup/shared` fails to resolve at bundle time
 // ("Unable to resolve module @tailsup/shared"), create apps/mobile/metro.config.js
 // with EXACTLY this content, then restart the bundler:

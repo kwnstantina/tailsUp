@@ -525,7 +525,7 @@ row ownership against the session id (→ `403`/`404`, never revealing others' r
 ### Seed logins + per-role verify (live DB)
 
 ```bash
-# 0. Node 20 + a running Postgres, then migrate + seed (creates BOTH logins):
+# 0. Node 22 + a running Postgres, then migrate + seed (creates BOTH logins):
 npm run db:migrate -w apps/api
 npm run db:seed -w apps/api
 #   → trainer@tailsup.local / Trainer123!   (role trainer)

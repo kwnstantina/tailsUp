@@ -46,6 +46,7 @@ import {
 import { ProgressCurve } from '../../components/ProgressCurve';
 import { colors, fontFallback, fonts, radii, space, useResponsive, useType } from '../../lib/theme';
 import { useLang } from '../../lib/i18n';
+import { pageMetadata } from '../../lib/page-metadata';
 import { crew, practice, sampleCurve, services, trustClaims } from '../../lib/site-content';
 import { photos } from '../../lib/photos';
 
@@ -133,6 +134,10 @@ const copy = {
     closingSecondary: 'Send us a message',
   },
 } as const;
+
+export function generateMetadata() {
+  return pageMetadata(copy.el.head);
+}
 
 export default function HomePage() {
   const { lang } = useLang();
