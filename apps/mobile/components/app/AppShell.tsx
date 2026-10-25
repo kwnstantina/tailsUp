@@ -147,10 +147,12 @@ export function AppShell({
   const sidebar = role === 'trainer' && width >= 1024;
   const counts = useTrainerCounts(role === 'trainer' ? trainerId : null, pathname);
 
+  // No router.replace('/login') here: navigating while the session is still
+  // cached remounts the current screen, which refetches and gets 401s. Once the
+  // session clears, the (app) layout's guard redirects to /login by itself.
   const signOut = useCallback(async () => {
     await authClient.signOut();
-    router.replace('/login');
-  }, [router]);
+  }, []);
 
   // Focus mode: the logging screen draws its own header.
   if (/^\/sessions\/[^/]+\/log/.test(pathname)) return <>{children}</>;
