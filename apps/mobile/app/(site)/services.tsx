@@ -131,7 +131,7 @@ export default function ServicesPage() {
             const Icon = SERVICE_ICONS[i] ?? IconMagnifier;
             const t = TINTS[service.tint];
             return (
-              <View key={service.key} style={isWide ? styles.gridCell : undefined}>
+              <View key={service.key} style={isWide ? styles.gridCell : styles.gridCellFull}>
                 <Card tint={service.tint} large style={styles.card}>
                   <IconBubble>
                     <Icon size={28} color={t.iconInk} />
@@ -229,6 +229,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minWidth: 0,
   },
+  // In the wrapping row a cell is sized by its content, so without a width
+  // the card takes its unwrapped text width and runs off a phone screen.
+  gridCellFull: { width: '100%' },
   card: { flex: 1, gap: space.sm },
   outcomesTitle: {
     color: colors.text,

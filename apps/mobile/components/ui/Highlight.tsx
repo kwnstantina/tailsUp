@@ -43,6 +43,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     transform: [{ rotate: '-1.4deg' }],
     alignSelf: 'flex-start',
+    // A marked phrase wider than the column wraps inside the mark instead of
+    // running off a phone screen (Comfortaa is wide; "στην εμπιστοσύνη" at h1).
+    maxWidth: '100%',
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',

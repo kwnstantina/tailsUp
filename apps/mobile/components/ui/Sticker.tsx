@@ -50,9 +50,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
+    maxWidth: '100%',
   },
   label: {
     ...type.body,
     fontFamily: fonts.bodySemiBold,
+    // Long claims wrap inside the pill rather than overflowing narrow phones.
+    flexShrink: 1,
   },
 });
